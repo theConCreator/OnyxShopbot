@@ -45,9 +45,11 @@ def contact_seller_button(username):
         [InlineKeyboardButton("Написать отправителю", url=f"t.me/{username}")]
     ])
 
-# Обработка команд
+# Обработка команды старт
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p. Для отправки просто пришлите объявление боту")
+    start_message = "Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p. Для отправки просто пришлите объявление боту."
+    await update.message.reply_text(start_message)
+
 # Проверка объявления
 def is_valid_ad(message_text):
     # Простейшая проверка: длина сообщения < 100 символов и наличие ключевых слов
@@ -149,4 +151,3 @@ if __name__ == "__main__":
     thread.start()
 
     main()
-
