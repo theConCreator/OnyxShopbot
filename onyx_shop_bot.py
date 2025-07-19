@@ -31,15 +31,26 @@ logger = logging.getLogger(__name__)
 flask_thread = threading.Thread(target=run_flask)
 flask_thread.start()
 
-# Список запрещённых символов и слов
-ALLOWED_SPECIAL_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?:;()[]{}@#$%^&*-+=_~<>/\\\\|'\"`♡❤•₽¥€$£₿🙂🙃😀😂😅😊😉👍🔥💎🚀✨🎁💰🎉💬")
-FORBIDDEN_WORDS = ["реклама", "подпишись", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", "http", "www", ".com", ".ru"]
+# Расширенный список запрещённых слов (мат, жаргонизмы, непристойности, мошенничество)
+FORBIDDEN_WORDS = [
+    "реклама", "подпишись", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", 
+    "http", "www", ".com", ".ru", "спам", "порнография", "наркотики", "вагина", "анальный", 
+    "суицид", "убийство", "экстремизм", "бесплатно", "кредит", "лохотрон", "обман", "жертва", 
+    "мафия", "мошенничество", "пидор", "гей", "лесбиянка", "порн", "видеочат", "сексуальные", 
+    "секс", "аноним", "массажист", "платная подписка", "накрутка", "депозит", "привлечь", "пополнение",
+    "водка", "табак", "пиво", "наркота", "путана", "проституция", "деньги в долг", "кредитки",
+    "микрозаймы", "псевдонаука", "влияние", "афера", "игры на деньги", "стриптиз", "танцы на пилоне", 
+    "игры казино", "игровые автоматы", "лото", "лотереи", "манипуляция", "реклама бизнеса", 
+    "махинации", "грузовики", "оружие", "боеприпасы", "интернет-торговля оружием", "пистолет", "пневматика",
+    "огнестрельное", "оружие", "кастеты", "порнобизнес", "антибиотики", "стимуляторы", "психотропы",
+    "психоделики", "мародерство", "нацизм", "фашизм", "терроризм", "радикальные", "дискриминация",
+    "ебать", "пизда", "хуй", "сука", "блядь", "мудак", "пидорас", "заебал", "нахуй", "жопа", "ебаный",
+    "блуд", "ебло", "пидарас", "соси", "гандон", "урод", "псих", "пиздить", "нахера", "погоди", "черти",
+    "сучка", "мразь", "сволочь", "гондон", "питон", "сучий", "петух", "тупая", "ебаный", "выебаться"
+]
 
-# Ключевые слова для категорий
-SALE_KEYWORDS = ["продажа", "продаю", "sell", "селл", "s"]
-BUY_KEYWORDS = ["куплю", "покупка", "buy", "b"]
-TRADE_KEYWORDS = ["обмен", "меняю", "trade", "swap"]
-CATEGORY_KEYWORDS = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "гив", "nft подарок", "подарки"]
+# Список обязательных слов для публикации объявления
+ALLOWED_KEYWORDS = ["покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b"]
 
 # Словарь для хранения объявлений на модерации
 pending_approvals = {}
@@ -58,14 +69,13 @@ def build_caption(text: str, username: str, price: str = None):
 """
     return caption[:1024]  # Ограничение по символам Telegram
 
-# Функция проверки текста на валидность
-def is_valid_ad(text: str):
-    text_lower = text.lower()
-    if any(word in text_lower for word in FORBIDDEN_WORDS):
-        return False
-    if not any(kw in text_lower for kw in SALE_KEYWORDS + BUY_KEYWORDS + TRADE_KEYWORDS):
-        return False
-    return all(char in ALLOWED_SPECIAL_CHARS for char in text)
+# Функция проверки текста на наличие запрещённых слов
+def contains_forbidden_words(text: str):
+    return any(word in text.lower() for word in FORBIDDEN_WORDS)
+
+# Функция проверки текста на наличие нужных ключевых слов
+def contains_allowed_keywords(text: str):
+    return any(kw in text.lower() for kw in ALLOWED_KEYWORDS)
 
 # Функция для обработки команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,35 +96,32 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text, price = text.split("Цена:", 1)
             price = price.strip()
 
-        if is_valid_ad(text):
-            await update.message.reply_text("✅ Объявление принято и опубликовано.")
+        # Проверка на запрещённые слова
+        if contains_forbidden_words(text):
+            await update.message.reply_text("❌ Ваше объявление отклонено по причине: содержит запрещённые слова.")
             await context.bot.send_message(
-                chat_id=TARGET_CHANNEL_ID,
-                text=build_caption(text, username, price),
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
-                    [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
-                ])
+                chat_id=REJECTED_CHAT_ID,
+                text=f"Отклонено объявление:\n{text}\nПричина: содержит запрещённые слова."
             )
-        else:
-            # Отправляем на модерацию сомнительные объявления
-            await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
-            pending_approvals[update.message.message_id] = {
-                "type": "text",
-                "text": text,
-                "username": username,
-                "price": price
-            }
+            return
+
+        # Проверка на наличие обязательных ключевых слов
+        if not contains_allowed_keywords(text):
+            await update.message.reply_text("❌ Ваше объявление отклонено по причине: отсутствуют ключевые слова (покупка, продажа, обмен и т.п.).")
             await context.bot.send_message(
-                chat_id=MODERATION_CHAT_ID,
-                text=f"Новое текстовое объявление на модерацию:\n{text}",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Одобрить", callback_data=f"approve_{update.message.message_id}"),
-                     InlineKeyboardButton("Отклонить", callback_data=f"reject_{update.message.message_id}")]
-                ])
+                chat_id=REJECTED_CHAT_ID,
+                text=f"Отклонено объявление:\n{text}\nПричина: отсутствуют ключевые слова."
             )
-    else:
-        await update.message.reply_text("❗Ошибка: Не текстовое сообщение.")
+            return
+
+        # Если объявление прошло все проверки, публикуем его
+        await update.message.reply_text("✅ Объявление принято и опубликовано.")
+        await context.bot.send_message(
+            chat_id=TARGET_CHANNEL_ID,
+            text=build_caption(text, username, price),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
+                                              [InlineKeyboardButton("📣 Разместить объявление", url="https://t.me/onyxsh0pbot")]])
+        )
 
 # Обработка сообщений с фото
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,90 +135,46 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption, price = caption.split("Цена:", 1)
         price = price.strip()
 
-    if is_valid_ad(caption):
-        await update.message.reply_text("✅ Фотообъявление принято и опубликовано.")
-        await context.bot.send_photo(
-            chat_id=TARGET_CHANNEL_ID,
-            photo=file_id,
-            caption=build_caption(caption, username, price),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
-                [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
-            ])
+    # Проверка на запрещённые слова
+    if contains_forbidden_words(caption):
+        await update.message.reply_text("❌ Ваше фотообъявление отклонено по причине: содержит запрещённые слова.")
+        await context.bot.send_message(
+            chat_id=REJECTED_CHAT_ID,
+            text=f"Отклонено фотообъявление:\n{caption}\nПричина: содержит запрещённые слова."
         )
-    else:
-        # Отправляем на модерацию сомнительные фотообъявления
-        await update.message.reply_text("🔎 Фотообъявление отправлено на модерацию.")
-        pending_approvals[update.message.message_id] = {
-            "type": "photo",
-            "file_id": file_id,
-            "text": caption,
-            "username": username,
-            "price": price
-        }
-        await context.bot.send_photo(
-            chat_id=MODERATION_CHAT_ID,
-            photo=file_id,
-            caption=f"Новое фотообъявление на модерацию:\n{caption}",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{update.message.message_id}"),
-                 InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{update.message.message_id}")]
-            ])
-        )
-
-# Обработка модерации
-async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    action, ad_id = query.data.split("_")
-    
-    ad = pending_approvals.pop(int(ad_id), None)
-    if ad is None:
-        await query.edit_message_text("❌ Объявление уже обработано.")
         return
 
-    if action == "approve":
-        # Получаем объявление по ID и публикуем
-        if ad["type"] == "photo":
-            await context.bot.send_photo(
-                chat_id=TARGET_CHANNEL_ID,
-                photo=ad["file_id"],
-                caption=build_caption(ad["text"], ad["username"], ad["price"]),
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{ad['username']}")],
-                    [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
-                ])
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=TARGET_CHANNEL_ID,
-                text=build_caption(ad["text"], ad["username"], ad["price"]),
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{ad['username']}")],
-                    [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
-                ])
-            )
-        await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
-        # Отправляем уведомление пользователю
+    # Проверка на наличие обязательных ключевых слов
+    if not contains_allowed_keywords(caption):
+        await update.message.reply_text("❌ Ваше фотообъявление отклонено по причине: отсутствуют ключевые слова (покупка, продажа, обмен и т.п.).")
         await context.bot.send_message(
-            chat_id=ad["username"],
-            text="Ваше объявление было успешно выложено!"
+            chat_id=REJECTED_CHAT_ID,
+            text=f"Отклонено фотообъявление:\n{caption}\nПричина: отсутствуют ключевые слова."
         )
-    elif action == "reject":
-        await query.edit_message_text("❌ Объявление отклонено.")
-        await context.bot.send_message(REJECTED_CHAT_ID, f"Отклонено объявление:\n{ad['text']}")
-        # Отправляем уведомление пользователю о отклонении
-        await context.bot.send_message(
-            chat_id=ad["username"],
-            text="Ваше объявление отклонено по причине: несоответствие правилам."
-        )
+        return
+
+    # Если фотообъявление прошло все проверки, публикуем его
+    await update.message.reply_text("✅ Ваше фотообъявление принято и опубликовано.")
+    await context.bot.send_photo(
+        chat_id=TARGET_CHANNEL_ID,
+        photo=file_id,
+        caption=build_caption(caption, username, price),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
+                                          [InlineKeyboardButton("📣 Разместить объявление", url="https://t.me/onyxsh0pbot")]])
+    )
+
+# Запуск бота
+async def main():
+    application = ApplicationBuilder().token(TOKEN).build()
+    
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT, handle_text))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    
+    await application.run_polling()
 
 if __name__ == '__main__':
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    application.add_handler(CallbackQueryHandler(handle_moderation))
+    import asyncio
+    asyncio.run(main())
 
-    application.run_polling()
 
