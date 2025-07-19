@@ -1,153 +1,166 @@
 import os
-import logging
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
-from flask import Flask
-from threading import Thread
 from dotenv import load_dotenv
+from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto)
+from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler)
+from flask import Flask
+import threading
 
-# Загрузка переменных окружения
+# Load environment variables
 load_dotenv()
-
 TOKEN = os.getenv("BOT_TOKEN")
+TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
 REJECTED_CHAT_ID = int(os.getenv("REJECTED_CHAT_ID"))
-TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 
-# Flask сервер для Render пинга
 app = Flask(__name__)
 
+# Flask fake ping route to keep bot alive on Render
 @app.route('/')
-def ping():
-    return "I'm alive", 200
+def index():
+    return "Bot is running."
 
-# Запуск Flask сервера в отдельном потоке
-def start_flask_server():
-    app.run(host="0.0.0.0", port=5000)
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
 
-# Логирование
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Структуры данных для хранения заявок на модерацию
+# In-memory moderation queue
 pending_approvals = {}
 
-# Функция для создания кнопок модерации
+# Allowed and denied content settings
+ALLOWED_LANGS = ["en", "ru"]
+ALLOWED_SPECIAL_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?:;()[]{}@#$%^&*-+=_~<>/\\|'\"`♡❤•₽¥€$£₿🙂🙃😀😂😅😊😉👍🔥💎🚀✨🎁💰🎉💬")
+
+SALE_KEYWORDS = ["продажа", "продаю", "sell", "селл", "s"]
+BUY_KEYWORDS = ["куплю", "покупка", "buy", "b"]
+TRADE_KEYWORDS = ["обмен", "меняю", "trade", "swap"]
+CATEGORY_KEYWORDS = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "гив", "nft подарок", "подарки"]
+FORBIDDEN_WORDS = ["реклама", "подпишись", "подпишитесь", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", "http", "www", ".com", ".ru"]
+
+# Build safe caption
+def build_caption(text: str, username: str):
+    hashtags = []
+    for word in text.lower().split():
+        if any(k in word for k in SALE_KEYWORDS):
+            hashtags.append("#продажа")
+        if any(k in word for k in BUY_KEYWORDS):
+            hashtags.append("#покупка")
+        if any(k in word for k in TRADE_KEYWORDS):
+            hashtags.append("#обмен")
+        if any(k in word for k in CATEGORY_KEYWORDS):
+            hashtags.append(f"#{word}")
+    hashtags.append(f"#{username}")
+    hashtags_line = " ".join(set(hashtags))
+    user_line = f"\n\nОпубликовал(а): @{username}" if username else ""
+    return f"Хештеги:\n{hashtags_line}\n\n{text.strip()}{user_line}"[:1020]
+
+# Create contact button
+def contact_seller_button(username: str):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Написать продавцу", url=f"https://t.me/{username}")]
+    ])
+
 def moderation_buttons(ad_id):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Approve", callback_data=f"approve_{ad_id}")],
-        [InlineKeyboardButton("Reject", callback_data=f"reject_{ad_id}")]
+        [
+            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{ad_id}"),
+            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{ad_id}")
+        ]
     ])
 
-# Функция для создания кнопки "Написать отправителю"
-def contact_seller_button(username):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Написать отправителю", url=f"t.me/{username}")]
-    ])
+def is_valid_ad(text: str):
+    text_lower = text.lower()
+    if any(word in text_lower for word in FORBIDDEN_WORDS):
+        return False
+    if not any(kw in text_lower for kw in SALE_KEYWORDS + BUY_KEYWORDS + TRADE_KEYWORDS):
+        return False
+    return all(char in ALLOWED_SPECIAL_CHARS for char in text)
 
-# Обработка команды старт
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    start_message = "Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p. Для отправки просто пришлите объявление боту."
-    await update.message.reply_text(start_message)
+    await update.message.reply_text(
+        "Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p.\n"
+        "Для отправки просто пришлите объявление боту."
+    )
 
-# Проверка объявления
-def is_valid_ad(message_text):
-    # Простейшая проверка: длина сообщения < 100 символов и наличие ключевых слов
-    keywords = ['продажа', 'покупка', 'обмен', 'nft', 'крипта']
-    if any(keyword in message_text.lower() for keyword in keywords) and len(message_text) <= 100:
-        return True
-    return False
-
-# Обработка текстовых сообщений
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
-    user_username = update.message.from_user.username
-
-    if is_valid_ad(user_message):
-        # Если объявление прошло проверку, отправляем в канал с кнопкой "Написать отправителю"
-        await update.message.reply_text(f"Ваше объявление принято: {user_message}")
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    username = update.message.from_user.username or "аноним"
+    if is_valid_ad(text):
+        await update.message.reply_text("✅ Объявление принято и опубликовано.")
         await context.bot.send_message(
-            TARGET_CHANNEL_ID, 
-            f"Объявление:\n{user_message}\n\nОпубликовал(а): @{update.message.from_user.username}",
-            reply_markup=contact_seller_button(user_username)  # Добавляем кнопку с ссылкой на отправителя
+            chat_id=TARGET_CHANNEL_ID,
+            text=build_caption(text, username),
+            reply_markup=contact_seller_button(username)
         )
     else:
-        # Если не прошло проверку, отправляем на модерацию
         ad_id = update.message.message_id
-        pending_approvals[ad_id] = update.message.text
+        pending_approvals[ad_id] = {"type": "text", "text": text, "username": username}
         await context.bot.send_message(
-            MODERATION_CHAT_ID, 
-            f"Новое объявление на модерацию:\n{user_message}\n\nИспользуйте кнопки ниже для принятия решения.",
+            chat_id=MODERATION_CHAT_ID,
+            text=f"Новое текстовое объявление на модерацию:\n{text}",
             reply_markup=moderation_buttons(ad_id)
         )
-        await update.message.reply_text("Ваше объявление отправлено на модерацию.")
+        await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
 
-# Обработка фото
-async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Получаем фото
-    user_photo = update.message.photo[-1].file_id  # Получаем ID самого качественного фото (последний элемент в списке)
-    user_caption = update.message.caption  # Получаем описание фотографии
-    user_username = update.message.from_user.username  # Получаем имя пользователя
-
-    # Если фото не имеет подписи, используем заглушку для проверки
-    if user_caption is None:
-        user_caption = ""
-
-    # Проверяем, является ли описание (или его отсутствие) валидным
-    if is_valid_ad(user_caption):
-        # Если описание фотографии прошла проверку
-        await update.message.reply_text(f"Ваше объявление с фото принято.")
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    caption = update.message.caption or ""
+    file_id = update.message.photo[-1].file_id
+    username = update.message.from_user.username or "аноним"
+    if is_valid_ad(caption):
+        await update.message.reply_text("✅ Фотообъявление принято и опубликовано.")
         await context.bot.send_photo(
-            TARGET_CHANNEL_ID, 
-            user_photo,
-            caption=user_caption,
-            reply_markup=contact_seller_button(user_username)  # Добавляем кнопку с ссылкой на отправителя
+            chat_id=TARGET_CHANNEL_ID,
+            photo=file_id,
+            caption=build_caption(caption, username),
+            reply_markup=contact_seller_button(username)
         )
     else:
-        # Если описание фотографии не прошло проверку, отправляем на модерацию
         ad_id = update.message.message_id
-        pending_approvals[ad_id] = user_caption or "Без описания"
-        await context.bot.send_message(
-            MODERATION_CHAT_ID, 
-            f"Новое объявление с фото на модерацию:\n{user_caption}\n\nИспользуйте кнопки ниже для принятия решения.",
+        pending_approvals[ad_id] = {"type": "photo", "text": caption, "file_id": file_id, "username": username}
+        await context.bot.send_photo(
+            chat_id=MODERATION_CHAT_ID,
+            photo=file_id,
+            caption=f"Новое фотообъявление на модерацию:\n{caption}",
             reply_markup=moderation_buttons(ad_id)
         )
-        await update.message.reply_text("Ваше объявление с фото отправлено на модерацию.")
+        await update.message.reply_text("🔎 Фотообъявление отправлено на модерацию.")
 
-# Обработка нажатий на кнопки модерации
 async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    ad_id = query.data.split("_")[1]  # Извлекаем ID объявления
-    message = pending_approvals.pop(int(ad_id), None)
+    await query.answer()
+    action, ad_id = query.data.split("_")
+    ad = pending_approvals.pop(int(ad_id), None)
+    if not ad:
+        await query.edit_message_text("❗️ Объявление уже обработано.")
+        return
 
-    if message:
-        if query.data.startswith("approve"):
-            # Публикуем в канал
-            await context.bot.send_message(TARGET_CHANNEL_ID, f"Объявление:\n{message}")
-            await query.answer("Объявление одобрено и опубликовано в канал.")
-            await context.bot.send_message(MODERATION_CHAT_ID, "Объявление опубликовано.")
-        elif query.data.startswith("reject"):
-            # Отклоняем и уведомляем пользователя
-            await context.bot.send_message(REJECTED_CHAT_ID, f"Объявление отклонено: {message}")
-            await query.answer("Объявление отклонено.")
-            await context.bot.send_message(MODERATION_CHAT_ID, "Объявление отклонено.")
+    username = ad.get("username", "аноним")
+    if action == "approve":
+        if ad["type"] == "photo":
+            await context.bot.send_photo(
+                chat_id=TARGET_CHANNEL_ID,
+                photo=ad["file_id"],
+                caption=build_caption(ad["text"], username),
+                reply_markup=contact_seller_button(username)
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=TARGET_CHANNEL_ID,
+                text=build_caption(ad["text"], username),
+                reply_markup=contact_seller_button(username)
+            )
+        await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
     else:
-        await query.answer("Ошибка: Объявление не найдено.")
+        await context.bot.send_message(REJECTED_CHAT_ID, f"🚫 Отклонено:\n{ad['text']}")
+        await query.edit_message_text("❌ Объявление отклонено.")
 
-# Инициализация бота
-def main():
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT, handle_text_message))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))  # Добавляем обработку фото
-    application.add_handler(CallbackQueryHandler(handle_moderation))
+if __name__ == '__main__':
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
 
-    # Запуск бота
-    application.run_polling()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(CallbackQueryHandler(handle_moderation))
 
-# Запуск Flask и бота в отдельных потоках
-if __name__ == "__main__":
-    thread = Thread(target=start_flask_server)
-    thread.start()
+    app.run_polling()
 
-    main()
