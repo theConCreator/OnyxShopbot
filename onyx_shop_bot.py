@@ -79,6 +79,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Новое объявление на модерацию:\n{user_message}\n\nИспользуйте кнопки ниже для принятия решения.",
             reply_markup=moderation_buttons(ad_id)
         )
+        await update.message.reply_text("Ваше объявление отправлено на модерацию.")
 
 # Обработка фото
 async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -109,6 +110,7 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
             f"Новое объявление с фото на модерацию:\n{user_caption}\n\nИспользуйте кнопки ниже для принятия решения.",
             reply_markup=moderation_buttons(ad_id)
         )
+        await update.message.reply_text("Ваше объявление с фото отправлено на модерацию.")
 
 # Обработка нажатий на кнопки модерации
 async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -121,10 +123,12 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Публикуем в канал
             await context.bot.send_message(TARGET_CHANNEL_ID, f"Объявление:\n{message}")
             await query.answer("Объявление одобрено и опубликовано в канал.")
+            await context.bot.send_message(MODERATION_CHAT_ID, "Объявление опубликовано.")
         elif query.data.startswith("reject"):
             # Отклоняем и уведомляем пользователя
             await context.bot.send_message(REJECTED_CHAT_ID, f"Объявление отклонено: {message}")
             await query.answer("Объявление отклонено.")
+            await context.bot.send_message(MODERATION_CHAT_ID, "Объявление отклонено.")
     else:
         await query.answer("Ошибка: Объявление не найдено.")
 
@@ -145,4 +149,5 @@ if __name__ == "__main__":
     thread.start()
 
     main()
+
 
