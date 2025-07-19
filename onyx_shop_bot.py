@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from flask import Flask
 from threading import Thread
@@ -51,8 +51,8 @@ def is_valid_ad(message_text):
         return True
     return False
 
-# Обработка сообщения от пользователя
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Обработка текстовых сообщений
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
     if is_valid_ad(user_message):
@@ -65,6 +65,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_approvals[ad_id] = update.message.text
         await context.bot.send_message(MODERATION_CHAT_ID, 
                                        f"Новое объявление на модерацию:\n{user_message}\n\nИспользуйте кнопки ниже для принятия решения.",
+                                       reply_markup=moderation_buttons(ad_id))
+
+# Обработка фото
+async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_photo = update.message.photo[-1].file_id  # Получаем ID самого качественного фото (последний элемент в списке)
+    user_caption = update.message.caption  # Получаем описание фотографии
+
+    if user_caption and is_valid_ad(user_caption):
+        # Если описание фотографии прошла проверку
+        await update.message.reply_text(f"Ваше объявление с фото принято.")
+        await context.bot.send_media_group(TARGET_CHANNEL_ID, [InputMediaPhoto(user_photo, caption=user_caption)])
+    else:
+        # Если описание фотографии не прошло проверку, отправляем на модерацию
+        ad_id = update.message.message_id
+        pending_approvals[ad_id] = user_caption or "Без описания"
+        await context.bot.send_message(MODERATION_CHAT_ID, 
+                                       f"Новое объявление с фото на модерацию:\n{user_caption}\n\nИспользуйте кнопки ниже для принятия решения.",
                                        reply_markup=moderation_buttons(ad_id))
 
 # Обработка нажатий на кнопки модерации
@@ -89,7 +106,8 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT, handle_message))
+    application.add_handler(MessageHandler(filters.TEXT, handle_text_message))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))  # Добавляем обработку фото
     application.add_handler(CallbackQueryHandler(handle_moderation))
 
     # Запуск бота
