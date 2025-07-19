@@ -62,8 +62,9 @@ FORBIDDEN_WORDS = [
 # Функция для нормализации текста (замена латиницы на кириллицу)
 def normalize_text(text):
     translation = str.maketrans(
-        "aàáäâbcdçdefghiíjkllmnñoópqrsstúüvwxyz",
-        "аàáäâbцдефгиíклмнñoópqrsstúüvwxyz")
+        "aàáäâbcddefghijkllmnñoópqrsstuvwxyz",
+        "аàáäâбцдефгхийклмнñoópqrsstuvwxyz"
+    )
     return text.translate(translation)
 
 # Функция для проверки наличия запрещённых слов
@@ -141,18 +142,12 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "approve":
-        if ad["type"] == "photo":
-            await context.bot.send_photo(
-                chat_id=TARGET_CHANNEL_ID,
-                photo=ad["file_id"],
-                caption=f"Фотообъявление от @{ad['username']}:\n{ad['text']}"
-            )
-        else:
+        if ad['text']:
             await context.bot.send_message(
                 chat_id=TARGET_CHANNEL_ID,
                 text=f"Объявление от @{ad['username']}:\n{ad['text']}"
             )
-        await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
+        await query.edit_message_text("✅ Объявление опубликовано.")
         await context.bot.send_message(
             chat_id=ad["username"],
             text="Ваше объявление было успешно выложено!"
@@ -173,4 +168,5 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(handle_moderation))
 
     application.run_polling()
+
 
