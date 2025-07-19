@@ -50,11 +50,10 @@ def build_caption(text: str, username: str, price: str = None):
     price_line = f"\nЦена: {price}" if price else ""
     caption = f"""
 Объявление
-----------------
+-------------------
 {text.strip()}
 
-{price_line}
----------------
+-------------------
 Отправил(а): {user_mention}
 """
     return caption[:1024]  # Ограничение по символам Telegram
@@ -90,7 +89,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=TARGET_CHANNEL_ID,
             text=build_caption(text, username, price),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{username}")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✍️Написать продавцу", url=f"https://t.me/{username}")]])
         )
     else:
         await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
@@ -127,7 +126,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=TARGET_CHANNEL_ID,
             photo=file_id,
             caption=build_caption(caption, username, price),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{username}")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✍️Написать продавцу", url=f"https://t.me/{username}")]])
         )
     else:
         await update.message.reply_text("🔎 Фотообъявление отправлено на модерацию.")
@@ -143,8 +142,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=file_id,
             caption=f"Новое фотообъявление на модерацию:\n{caption}",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Одобрить", callback_data=f"approve_{update.message.message_id}"),
-                 InlineKeyboardButton("Отклонить", callback_data=f"reject_{update.message.message_id}")]
+                [InlineKeyboardButton("✅Одобрить", callback_data=f"approve_{update.message.message_id}"),
+                 InlineKeyboardButton("❌Отклонить", callback_data=f"reject_{update.message.message_id}")]
             ])
         )
 
