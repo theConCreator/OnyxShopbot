@@ -1,12 +1,10 @@
 import os
 import threading
-import time
 from dotenv import load_dotenv
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update)
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from flask import Flask
 import logging
-import requests
 
 # Загрузка переменных из .env файла
 load_dotenv()
@@ -25,15 +23,6 @@ def index():
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-# Пинг-система (отправка запросов каждый 40 секунд)
-def ping():
-    while True:
-        time.sleep(40)  # Пинг каждый 40 секунд
-        try:
-            requests.get("https://your-app-name.onrender.com")  # Замените на свой URL
-        except requests.exceptions.RequestException as e:
-            print(f"Ping failed: {e}")
-
 # Включаем logging для ошибок
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,9 +30,6 @@ logger = logging.getLogger(__name__)
 # Включаем фейковый Flask для пинга
 flask_thread = threading.Thread(target=run_flask)
 flask_thread.start()
-
-ping_thread = threading.Thread(target=ping)
-ping_thread.start()
 
 # Список запрещённых символов и слов
 ALLOWED_SPECIAL_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?:;()[]{}@#$%^&*-+=_~<>/\\\\|'\"`♡❤•₽¥€$£₿🙂🙃😀😂😅😊😉👍🔥💎🚀✨🎁💰🎉💬")
@@ -90,40 +76,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка текстовых сообщений
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    username = update.message.from_user.username or "аноним"
-    # Добавление цены, если она указана
-    price = None
-    if "Цена:" in text:
-        text, price = text.split("Цена:", 1)
-        price = price.strip()
+    # Проверяем, что сообщение содержит текст
+    if update.message and update.message.text:
+        text = update.message.text
+        username = update.message.from_user.username or "аноним"
+        
+        # Добавление цены, если она указана
+        price = None
+        if "Цена:" in text:
+            text, price = text.split("Цена:", 1)
+            price = price.strip()
 
-    if is_valid_ad(text):
-        await update.message.reply_text("✅ Объявление принято и опубликовано.")
-        await context.bot.send_message(
-            chat_id=TARGET_CHANNEL_ID,
-            text=build_caption(text, username, price),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✍️Написать продавцу", url=f"https://t.me/{username}")],
-                [InlineKeyboardButton("Разместить объявление", url="https://t.me/onyxsh0pbot")]
-            ])
-        )
+        if is_valid_ad(text):
+            await update.message.reply_text("✅ Объявление принято и опубликовано.")
+            await context.bot.send_message(
+                chat_id=TARGET_CHANNEL_ID,
+                text=build_caption(text, username, price),
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
+                    [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
+                ])
+            )
+        else:
+            await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
+            pending_approvals[update.message.message_id] = {
+                "type": "text",
+                "text": text,
+                "username": username,
+                "price": price
+            }
+            await context.bot.send_message(
+                chat_id=MODERATION_CHAT_ID,
+                text=f"Новое текстовое объявление на модерацию:\n{text}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Одобрить", callback_data=f"approve_{update.message.message_id}"),
+                     InlineKeyboardButton("Отклонить", callback_data=f"reject_{update.message.message_id}")]
+                ])
+            )
     else:
-        await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
-        pending_approvals[update.message.message_id] = {
-            "type": "text",
-            "text": text,
-            "username": username,
-            "price": price
-        }
-        await context.bot.send_message(
-            chat_id=MODERATION_CHAT_ID,
-            text=f"Новое текстовое объявление на модерацию:\n{text}",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Одобрить", callback_data=f"approve_{update.message.message_id}"),
-                 InlineKeyboardButton("Отклонить", callback_data=f"reject_{update.message.message_id}")]
-            ])
-        )
+        await update.message.reply_text("❗Ошибка: Не текстовое сообщение.")
 
 # Обработка сообщений с фото
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,8 +135,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=file_id,
             caption=build_caption(caption, username, price),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✍️Написать продавцу", url=f"https://t.me/{username}")],
-                [InlineKeyboardButton("Разместить объявление", url="https://t.me/onyxsh0pbot")]
+                [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
+                [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
             ])
         )
     else:
@@ -162,8 +153,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=file_id,
             caption=f"Новое фотообъявление на модерацию:\n{caption}",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅Одобрить", callback_data=f"approve_{update.message.message_id}"),
-                 InlineKeyboardButton("❌Отклонить", callback_data=f"reject_{update.message.message_id}")]
+                [InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{update.message.message_id}"),
+                 InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{update.message.message_id}")]
             ])
         )
 
@@ -186,8 +177,8 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 photo=ad["file_id"],
                 caption=build_caption(ad["text"], ad["username"], ad["price"]),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{ad['username']}")],
-                    [InlineKeyboardButton("Разместить объявление", url="https://t.me/onyxsh0pbot")]
+                    [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{ad['username']}")],
+                    [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
                 ])
             )
         else:
@@ -195,8 +186,8 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=TARGET_CHANNEL_ID,
                 text=build_caption(ad["text"], ad["username"], ad["price"]),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{ad['username']}")],
-                    [InlineKeyboardButton("Разместить объявление", url="https://t.me/onyxsh0pbot")]
+                    [InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{ad['username']}")],
+                    [InlineKeyboardButton("📢 Разместить объявление", url="https://t.me/onyxsh0pbot")]
                 ])
             )
         await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
@@ -222,4 +213,3 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(handle_moderation))
 
     application.run_polling()
-
