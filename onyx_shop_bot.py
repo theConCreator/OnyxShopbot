@@ -69,10 +69,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # Обработка фото
 async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Получаем фото
     user_photo = update.message.photo[-1].file_id  # Получаем ID самого качественного фото (последний элемент в списке)
     user_caption = update.message.caption  # Получаем описание фотографии
 
-    if user_caption and is_valid_ad(user_caption):
+    # Если фото не имеет подписи, используем заглушку для проверки
+    if user_caption is None:
+        user_caption = ""
+
+    # Проверяем, является ли описание (или его отсутствие) валидным
+    if is_valid_ad(user_caption):
         # Если описание фотографии прошла проверку
         await update.message.reply_text(f"Ваше объявление с фото принято.")
         await context.bot.send_media_group(TARGET_CHANNEL_ID, [InputMediaPhoto(user_photo, caption=user_caption)])
