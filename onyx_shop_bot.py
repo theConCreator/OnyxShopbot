@@ -47,8 +47,7 @@ def contact_seller_button(username):
 
 # Обработка команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот для публикации объявлений о продаже, покупке и обмене NFT.")
-
+    await update.message.reply_text("Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p. Для отправки просто пришлите объявление боту")
 # Проверка объявления
 def is_valid_ad(message_text):
     # Простейшая проверка: длина сообщения < 100 символов и наличие ключевых слов
@@ -96,9 +95,10 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if is_valid_ad(user_caption):
         # Если описание фотографии прошла проверку
         await update.message.reply_text(f"Ваше объявление с фото принято.")
-        await context.bot.send_media_group(
+        await context.bot.send_photo(
             TARGET_CHANNEL_ID, 
-            [InputMediaPhoto(user_photo, caption=user_caption)],
+            user_photo,
+            caption=user_caption,
             reply_markup=contact_seller_button(user_username)  # Добавляем кнопку с ссылкой на отправителя
         )
     else:
@@ -149,5 +149,4 @@ if __name__ == "__main__":
     thread.start()
 
     main()
-
 
