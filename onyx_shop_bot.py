@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto)
+from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup)
 from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler)
 from flask import Flask
 import threading
@@ -35,35 +35,34 @@ TRADE_KEYWORDS = ["обмен", "меняю", "trade", "swap"]
 CATEGORY_KEYWORDS = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "гив", "nft подарок", "подарки"]
 FORBIDDEN_WORDS = ["реклама", "подпишись", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", "http", "www", ".com", ".ru"]
 
-# Build safe caption without hashtags
+# Build simple caption without hashtags
 def build_caption(text: str, username: str, price: str = None):
     user_mention = f"@{username}" if username else "пользователь скрыл имя"
-    price_line = f"\n💸 Цена: {price}" if price else ""
+    price_line = f"\nЦена: {price}" if price else ""
     caption = f"""
-🔹 **Объявление**:
+Объявление:
 
 {text.strip()}
 
 {price_line}
 
-📤 **Опубликовал(а)**: {user_mention}
+Опубликовал(а): {user_mention}
 
-👥 **Написать продавцу**:
-💬 [Написать](https://t.me/{username})
+Написать продавцу: [Написать](https://t.me/{username})
     """
     return caption[:1024]  # Ограничение по символам Telegram
 
 # Create contact button
 def contact_seller_button(username: str):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💬 Написать продавцу", url=f"https://t.me/{username}")]
+        [InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{username}")]
     ])
 
 def moderation_buttons(ad_id):
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{ad_id}"),
-            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{ad_id}")
+            InlineKeyboardButton("Одобрить", callback_data=f"approve_{ad_id}"),
+            InlineKeyboardButton("Отклонить", callback_data=f"reject_{ad_id}")
         ]
     ])
 
@@ -108,9 +107,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    caption = update.message.caption or ""
+    caption = update.message.caption or ""  # Если caption нет, используем пустую строку
     file_id = update.message.photo[-1].file_id
     username = update.message.from_user.username or "аноним"
+    
     # Аналогично добавим цену
     price = None
     if "Цена:" in caption:
