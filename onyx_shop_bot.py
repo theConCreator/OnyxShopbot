@@ -1,7 +1,7 @@
 import os
 import threading
 from dotenv import load_dotenv
-from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update, Bot)
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update)
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from flask import Flask
 import logging
@@ -49,16 +49,14 @@ def build_caption(text: str, username: str, price: str = None):
     user_mention = f"@{username}" if username else "пользователь скрыл имя"
     price_line = f"\nЦена: {price}" if price else ""
     caption = f"""
-Объявление:
-
+Объявление
+----------------
 {text.strip()}
 
 {price_line}
-
-Опубликовал(а): {user_mention}
-
-Написать продавцу: [Написать](https://t.me/{username})
-    """
+---------------
+Отправил(а): {user_mention}
+"""
     return caption[:1024]  # Ограничение по символам Telegram
 
 # Функция проверки текста на валидность
@@ -177,9 +175,19 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{ad['username']}")]])
             )
         await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
+        # Отправляем окончательный статус пользователю
+        await context.bot.send_message(
+            chat_id=ad["username"],
+            text="Ваше объявление было успешно выложено!"
+        )
     elif action == "reject":
         await query.edit_message_text("❌ Объявление отклонено.")
         await context.bot.send_message(REJECTED_CHAT_ID, f"Отклонено объявление:\n{ad['text']}")
+        # Отправляем уведомление пользователю о отклонении
+        await context.bot.send_message(
+            chat_id=ad["username"],
+            text="Ваше объявление отклонено по причине: несоответствие правилам."
+        )
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
