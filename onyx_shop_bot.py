@@ -1,11 +1,11 @@
 import os
 import threading
 from dotenv import load_dotenv
-from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update)
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
-from flask import Flask
 import logging
 import re
+from flask import Flask
 
 # Загрузка переменных из .env файла
 load_dotenv()
@@ -37,7 +37,7 @@ ALLOWED_KEYWORDS = [
     "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
     "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
     "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "nft", "нфт", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "нft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
     "продукция", "товар", "продажа"
 ]
 
@@ -63,7 +63,7 @@ FORBIDDEN_WORDS = [
 def normalize_text(text):
     translation = str.maketrans(
         "aàáäâbcddefghijkllmnñoópqrsstuvwxyz",
-        "аàáäâбцдефгхийклмнñoópqrsstuvwxyz"
+        "абцдефгхийклмнñoópqrsstuvwxyz"
     )
     return text.translate(translation)
 
@@ -130,42 +130,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Обработка модерации
-async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    action, ad_id = query.data.split("_")
-    
-    ad = pending_approvals.pop(int(ad_id), None)
-    if ad is None:
-        await query.edit_message_text("❌ Объявление уже обработано.")
-        return
-
-    if action == "approve":
-        if ad['text']:
-            await context.bot.send_message(
-                chat_id=TARGET_CHANNEL_ID,
-                text=f"Объявление от @{ad['username']}:\n{ad['text']}"
-            )
-        await query.edit_message_text("✅ Объявление опубликовано.")
-        await context.bot.send_message(
-            chat_id=ad["username"],
-            text="Ваше объявление было успешно выложено!"
-        )
-    elif action == "reject":
-        await query.edit_message_text("❌ Объявление отклонено.")
-        await context.bot.send_message(REJECTED_CHAT_ID, f"Отклонено объявление:\n{ad['text']}")
-        await context.bot.send_message(
-            chat_id=ad["username"],
-            text="Ваше объявление отклонено по причине: несоответствие правилам."
-        )
-
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    application.add_handler(CallbackQueryHandler(handle_moderation))
 
     application.run_polling()
 
