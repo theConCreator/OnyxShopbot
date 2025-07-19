@@ -39,6 +39,12 @@ def moderation_buttons(ad_id):
         [InlineKeyboardButton("Reject", callback_data=f"reject_{ad_id}")]
     ])
 
+# Функция для создания кнопки "Написать отправителю"
+def contact_seller_button(username):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Написать отправителю", url=f"t.me/{username}")]
+    ])
+
 # Обработка команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я бот для публикации объявлений о продаже, покупке и обмене NFT.")
@@ -54,24 +60,32 @@ def is_valid_ad(message_text):
 # Обработка текстовых сообщений
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
+    user_username = update.message.from_user.username
 
     if is_valid_ad(user_message):
-        # Если объявление прошло проверку, отправляем в канал
+        # Если объявление прошло проверку, отправляем в канал с кнопкой "Написать отправителю"
         await update.message.reply_text(f"Ваше объявление принято: {user_message}")
-        await context.bot.send_message(TARGET_CHANNEL_ID, f"Объявление:\n{user_message}\n\nОпубликовал(а): @{update.message.from_user.username}")
+        await context.bot.send_message(
+            TARGET_CHANNEL_ID, 
+            f"Объявление:\n{user_message}\n\nОпубликовал(а): @{update.message.from_user.username}",
+            reply_markup=contact_seller_button(user_username)  # Добавляем кнопку с ссылкой на отправителя
+        )
     else:
         # Если не прошло проверку, отправляем на модерацию
         ad_id = update.message.message_id
         pending_approvals[ad_id] = update.message.text
-        await context.bot.send_message(MODERATION_CHAT_ID, 
-                                       f"Новое объявление на модерацию:\n{user_message}\n\nИспользуйте кнопки ниже для принятия решения.",
-                                       reply_markup=moderation_buttons(ad_id))
+        await context.bot.send_message(
+            MODERATION_CHAT_ID, 
+            f"Новое объявление на модерацию:\n{user_message}\n\nИспользуйте кнопки ниже для принятия решения.",
+            reply_markup=moderation_buttons(ad_id)
+        )
 
 # Обработка фото
 async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Получаем фото
     user_photo = update.message.photo[-1].file_id  # Получаем ID самого качественного фото (последний элемент в списке)
     user_caption = update.message.caption  # Получаем описание фотографии
+    user_username = update.message.from_user.username  # Получаем имя пользователя
 
     # Если фото не имеет подписи, используем заглушку для проверки
     if user_caption is None:
@@ -81,14 +95,20 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if is_valid_ad(user_caption):
         # Если описание фотографии прошла проверку
         await update.message.reply_text(f"Ваше объявление с фото принято.")
-        await context.bot.send_media_group(TARGET_CHANNEL_ID, [InputMediaPhoto(user_photo, caption=user_caption)])
+        await context.bot.send_media_group(
+            TARGET_CHANNEL_ID, 
+            [InputMediaPhoto(user_photo, caption=user_caption)],
+            reply_markup=contact_seller_button(user_username)  # Добавляем кнопку с ссылкой на отправителя
+        )
     else:
         # Если описание фотографии не прошло проверку, отправляем на модерацию
         ad_id = update.message.message_id
         pending_approvals[ad_id] = user_caption or "Без описания"
-        await context.bot.send_message(MODERATION_CHAT_ID, 
-                                       f"Новое объявление с фото на модерацию:\n{user_caption}\n\nИспользуйте кнопки ниже для принятия решения.",
-                                       reply_markup=moderation_buttons(ad_id))
+        await context.bot.send_message(
+            MODERATION_CHAT_ID, 
+            f"Новое объявление с фото на модерацию:\n{user_caption}\n\nИспользуйте кнопки ниже для принятия решения.",
+            reply_markup=moderation_buttons(ad_id)
+        )
 
 # Обработка нажатий на кнопки модерации
 async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
