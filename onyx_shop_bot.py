@@ -5,6 +5,7 @@ from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update)
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from flask import Flask
 import logging
+import re
 
 # Загрузка переменных из .env файла
 load_dotenv()
@@ -31,13 +32,22 @@ logger = logging.getLogger(__name__)
 flask_thread = threading.Thread(target=run_flask)
 flask_thread.start()
 
+# Список разрешённых (обязательных) слов для публикации
+ALLOWED_KEYWORDS = [
+    "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
+    "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
+    "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
+    "nft", "нфт", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "продукция", "товар", "продажа"
+]
+
 # Расширенный список запрещённых слов (мат, жаргонизмы, непристойности, мошенничество)
 FORBIDDEN_WORDS = [
     "реклама", "подпишись", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", 
     "http", "www", ".com", ".ru", "спам", "порнография", "наркотики", "вагина", "анальный", 
     "суицид", "убийство", "экстремизм", "бесплатно", "кредит", "лохотрон", "обман", "жертва", 
     "мафия", "мошенничество", "пидор", "гей", "лесбиянка", "порн", "видеочат", "сексуальные", 
-    "секс", "аноним", "массажист", "платная подписка", "накрутка", "депозит", "привлечь", "пополнение",
+    "секс", "массажист", "платная подписка", "накрутка", "депозит", "привлечь", "пополнение",
     "водка", "табак", "пиво", "наркота", "путана", "проституция", "деньги в долг", "кредитки",
     "микрозаймы", "псевдонаука", "влияние", "афера", "игры на деньги", "стриптиз", "танцы на пилоне", 
     "игры казино", "игровые автоматы", "лото", "лотереи", "манипуляция", "реклама бизнеса", 
@@ -45,37 +55,26 @@ FORBIDDEN_WORDS = [
     "огнестрельное", "оружие", "кастеты", "порнобизнес", "антибиотики", "стимуляторы", "психотропы",
     "психоделики", "мародерство", "нацизм", "фашизм", "терроризм", "радикальные", "дискриминация",
     "ебать", "пизда", "хуй", "сука", "блядь", "мудак", "пидорас", "заебал", "нахуй", "жопа", "ебаный",
-    "блуд", "ебло", "пидарас", "соси", "гандон", "урод", "псих", "пиздить", "нахера", "погоди", "черти",
-    "сучка", "мразь", "сволочь", "гондон", "питон", "сучий", "петух", "тупая", "ебаный", "выебаться"
+    "блуд", "ебло", "пиздить", "нахера", "погоди", "черти", "сучка", "мразь", "сволочь", "гондон", "урод",
+    "псих", "пиздить", "нахера", "погоди", "черти", "сучка", "мразь", "сволочь"
 ]
 
-# Список обязательных слов для публикации объявления
-ALLOWED_KEYWORDS = ["покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b"]
+# Функция для нормализации текста (замена латиницы на кириллицу)
+def normalize_text(text):
+    translation = str.maketrans(
+        "aàáäâbcdçdefghiíjkllmnñoópqrsstúüvwxyz",
+        "аàáäâbцдефгиíклмнñoópqrsstúüvwxyz")
+    return text.translate(translation)
 
-# Словарь для хранения объявлений на модерации
-pending_approvals = {}
+# Функция для проверки наличия запрещённых слов
+def contains_forbidden_words(text):
+    normalized_text = normalize_text(text.lower())
+    return any(forbidden_word in normalized_text for forbidden_word in FORBIDDEN_WORDS)
 
-# Вспомогательная функция для составления подписи
-def build_caption(text: str, username: str, price: str = None):
-    user_mention = f"@{username}" if username else "пользователь скрыл имя"
-    price_line = f"\nЦена: {price}" if price else ""
-    caption = f"""
-Объявление
--------------------
-{text.strip()}
-
--------------------
-Отправил(а): {user_mention}
-"""
-    return caption[:1024]  # Ограничение по символам Telegram
-
-# Функция проверки текста на наличие запрещённых слов
-def contains_forbidden_words(text: str):
-    return any(word in text.lower() for word in FORBIDDEN_WORDS)
-
-# Функция проверки текста на наличие нужных ключевых слов
-def contains_allowed_keywords(text: str):
-    return any(kw in text.lower() for kw in ALLOWED_KEYWORDS)
+# Функция для проверки, содержит ли текст обязательные ключевые слова
+def contains_allowed_keywords(text):
+    normalized_text = normalize_text(text.lower())
+    return any(keyword in normalized_text for keyword in ALLOWED_KEYWORDS)
 
 # Функция для обработки команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,42 +85,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка текстовых сообщений
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.text:
-        text = update.message.text
-        username = update.message.from_user.username or "аноним"
-        
-        # Добавление цены, если она указана
-        price = None
-        if "Цена:" in text:
-            text, price = text.split("Цена:", 1)
-            price = price.strip()
+    text = update.message.text
+    username = update.message.from_user.username or "аноним"
+    
+    # Проверка на наличие запрещённых слов
+    if contains_forbidden_words(text):
+        await update.message.reply_text("❌ Объявление отклонено. Причина: содержит запрещённые слова.")
+        return
+    
+    # Проверка на обязательные ключевые слова
+    if not contains_allowed_keywords(text):
+        await update.message.reply_text("❌ Объявление отклонено. Причина: отсутствуют обязательные ключевые слова (например: покупка, продажа, обмен).")
+        return
 
-        # Проверка на запрещённые слова
-        if contains_forbidden_words(text):
-            await update.message.reply_text("❌ Ваше объявление отклонено по причине: содержит запрещённые слова.")
-            await context.bot.send_message(
-                chat_id=REJECTED_CHAT_ID,
-                text=f"Отклонено объявление:\n{text}\nПричина: содержит запрещённые слова."
-            )
-            return
-
-        # Проверка на наличие обязательных ключевых слов
-        if not contains_allowed_keywords(text):
-            await update.message.reply_text("❌ Ваше объявление отклонено по причине: отсутствуют ключевые слова (покупка, продажа, обмен и т.п.).")
-            await context.bot.send_message(
-                chat_id=REJECTED_CHAT_ID,
-                text=f"Отклонено объявление:\n{text}\nПричина: отсутствуют ключевые слова."
-            )
-            return
-
-        # Если объявление прошло все проверки, публикуем его
-        await update.message.reply_text("✅ Объявление принято и опубликовано.")
-        await context.bot.send_message(
-            chat_id=TARGET_CHANNEL_ID,
-            text=build_caption(text, username, price),
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
-                                              [InlineKeyboardButton("📣 Разместить объявление", url="https://t.me/onyxsh0pbot")]])
-        )
+    # Если объявление прошло все проверки, публикуем его
+    await update.message.reply_text("✅ Объявление принято и опубликовано.")
+    await context.bot.send_message(
+        chat_id=TARGET_CHANNEL_ID,
+        text=f"Объявление от @{username}:\n{text}"
+    )
 
 # Обработка сообщений с фото
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -129,52 +111,66 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_id = update.message.photo[-1].file_id
     username = update.message.from_user.username or "аноним"
     
-    # Аналогично добавим цену
-    price = None
-    if "Цена:" in caption:
-        caption, price = caption.split("Цена:", 1)
-        price = price.strip()
-
-    # Проверка на запрещённые слова
+    # Проверка на наличие запрещённых слов
     if contains_forbidden_words(caption):
-        await update.message.reply_text("❌ Ваше фотообъявление отклонено по причине: содержит запрещённые слова.")
-        await context.bot.send_message(
-            chat_id=REJECTED_CHAT_ID,
-            text=f"Отклонено фотообъявление:\n{caption}\nПричина: содержит запрещённые слова."
-        )
+        await update.message.reply_text("❌ Фотообъявление отклонено. Причина: содержит запрещённые слова.")
         return
-
-    # Проверка на наличие обязательных ключевых слов
+    
+    # Проверка на обязательные ключевые слова
     if not contains_allowed_keywords(caption):
-        await update.message.reply_text("❌ Ваше фотообъявление отклонено по причине: отсутствуют ключевые слова (покупка, продажа, обмен и т.п.).")
-        await context.bot.send_message(
-            chat_id=REJECTED_CHAT_ID,
-            text=f"Отклонено фотообъявление:\n{caption}\nПричина: отсутствуют ключевые слова."
-        )
+        await update.message.reply_text("❌ Фотообъявление отклонено. Причина: отсутствуют обязательные ключевые слова (например: покупка, продажа, обмен).")
         return
 
-    # Если фотообъявление прошло все проверки, публикуем его
-    await update.message.reply_text("✅ Ваше фотообъявление принято и опубликовано.")
+    # Если объявление прошло все проверки, публикуем его
+    await update.message.reply_text("✅ Фотообъявление принято и опубликовано.")
     await context.bot.send_photo(
         chat_id=TARGET_CHANNEL_ID,
         photo=file_id,
-        caption=build_caption(caption, username, price),
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Написать продавцу", url=f"https://t.me/{username}")],
-                                          [InlineKeyboardButton("📣 Разместить объявление", url="https://t.me/onyxsh0pbot")]])
+        caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Запуск бота
-async def main():
-    application = ApplicationBuilder().token(TOKEN).build()
+# Обработка модерации
+async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    action, ad_id = query.data.split("_")
     
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT, handle_text))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    
-    await application.run_polling()
+    ad = pending_approvals.pop(int(ad_id), None)
+    if ad is None:
+        await query.edit_message_text("❌ Объявление уже обработано.")
+        return
+
+    if action == "approve":
+        if ad["type"] == "photo":
+            await context.bot.send_photo(
+                chat_id=TARGET_CHANNEL_ID,
+                photo=ad["file_id"],
+                caption=f"Фотообъявление от @{ad['username']}:\n{ad['text']}"
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=TARGET_CHANNEL_ID,
+                text=f"Объявление от @{ad['username']}:\n{ad['text']}"
+            )
+        await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
+        await context.bot.send_message(
+            chat_id=ad["username"],
+            text="Ваше объявление было успешно выложено!"
+        )
+    elif action == "reject":
+        await query.edit_message_text("❌ Объявление отклонено.")
+        await context.bot.send_message(REJECTED_CHAT_ID, f"Отклонено объявление:\n{ad['text']}")
+        await context.bot.send_message(
+            chat_id=ad["username"],
+            text="Ваше объявление отклонено по причине: несоответствие правилам."
+        )
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(CallbackQueryHandler(handle_moderation))
 
+    application.run_polling()
 
