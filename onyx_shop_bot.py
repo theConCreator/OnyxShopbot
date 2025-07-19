@@ -41,6 +41,9 @@ BUY_KEYWORDS = ["куплю", "покупка", "buy", "b"]
 TRADE_KEYWORDS = ["обмен", "меняю", "trade", "swap"]
 CATEGORY_KEYWORDS = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "гив", "nft подарок", "подарки"]
 
+# Словарь для хранения объявлений на модерации
+pending_approvals = {}
+
 # Вспомогательная функция для составления подписи
 def build_caption(text: str, username: str, price: str = None):
     user_mention = f"@{username}" if username else "пользователь скрыл имя"
@@ -93,6 +96,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
+        pending_approvals[update.message.message_id] = {
+            "type": "text",
+            "text": text,
+            "username": username,
+            "price": price
+        }
         await context.bot.send_message(
             chat_id=MODERATION_CHAT_ID,
             text=f"Новое текстовое объявление на модерацию:\n{text}",
@@ -124,6 +133,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await update.message.reply_text("🔎 Фотообъявление отправлено на модерацию.")
+        pending_approvals[update.message.message_id] = {
+            "type": "photo",
+            "file_id": file_id,
+            "text": caption,
+            "username": username,
+            "price": price
+        }
         await context.bot.send_photo(
             chat_id=MODERATION_CHAT_ID,
             photo=file_id,
@@ -140,9 +156,13 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     action, ad_id = query.data.split("_")
     
+    ad = pending_approvals.pop(int(ad_id), None)
+    if ad is None:
+        await query.edit_message_text("❌ Объявление уже обработано.")
+        return
+
     if action == "approve":
         # Получаем объявление по ID и публикуем
-        ad = pending_approvals.pop(int(ad_id), None)
         if ad["type"] == "photo":
             await context.bot.send_photo(
                 chat_id=TARGET_CHANNEL_ID,
@@ -169,4 +189,3 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(handle_moderation))
 
     application.run_polling()
-
