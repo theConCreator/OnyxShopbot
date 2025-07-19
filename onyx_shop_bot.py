@@ -76,7 +76,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка текстовых сообщений
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Проверяем, что сообщение содержит текст
     if update.message and update.message.text:
         text = update.message.text
         username = update.message.from_user.username or "аноним"
@@ -98,6 +97,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
             )
         else:
+            # Отправляем на модерацию сомнительные объявления
             await update.message.reply_text("🔎 Объявление отправлено на модерацию.")
             pending_approvals[update.message.message_id] = {
                 "type": "text",
@@ -140,6 +140,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
     else:
+        # Отправляем на модерацию сомнительные фотообъявления
         await update.message.reply_text("🔎 Фотообъявление отправлено на модерацию.")
         pending_approvals[update.message.message_id] = {
             "type": "photo",
@@ -191,7 +192,7 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
             )
         await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
-        # Отправляем окончательный статус пользователю
+        # Отправляем уведомление пользователю
         await context.bot.send_message(
             chat_id=ad["username"],
             text="Ваше объявление было успешно выложено!"
@@ -213,3 +214,4 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(handle_moderation))
 
     application.run_polling()
+
