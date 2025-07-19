@@ -27,30 +27,31 @@ pending_approvals = {}
 
 # Allowed and denied content settings
 ALLOWED_LANGS = ["en", "ru"]
-ALLOWED_SPECIAL_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?:;()[]{}@#$%^&*-+=_~<>/\\|'\"`♡❤•₽¥€$£₿🙂🙃😀😂😅😊😉👍🔥💎🚀✨🎁💰🎉💬")
+ALLOWED_SPECIAL_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?:;()[]{}@#$%^&*-+=_~<>/\\\\|'\"`♡❤•₽¥€$£₿🙂🙃😀😂😅😊😉👍🔥💎🚀✨🎁💰🎉💬")
 
 SALE_KEYWORDS = ["продажа", "продаю", "sell", "селл", "s"]
 BUY_KEYWORDS = ["куплю", "покупка", "buy", "b"]
 TRADE_KEYWORDS = ["обмен", "меняю", "trade", "swap"]
 CATEGORY_KEYWORDS = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "гив", "nft подарок", "подарки"]
-FORBIDDEN_WORDS = ["реклама", "подпишись", "подпишитесь", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", "http", "www", ".com", ".ru"]
+FORBIDDEN_WORDS = ["реклама", "подпишись", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", "http", "www", ".com", ".ru"]
 
-# Build safe caption
-def build_caption(text: str, username: str):
-    hashtags = []
-    for word in text.lower().split():
-        if any(k in word for k in SALE_KEYWORDS):
-            hashtags.append("#продажа")
-        if any(k in word for k in BUY_KEYWORDS):
-            hashtags.append("#покупка")
-        if any(k in word for k in TRADE_KEYWORDS):
-            hashtags.append("#обмен")
-        if any(k in word for k in CATEGORY_KEYWORDS):
-            hashtags.append(f"#{word}")
-    hashtags.append(f"#{username}")
-    hashtags_line = " ".join(set(hashtags))
-    user_line = f"\n\nОпубликовал(а): @{username}" if username else ""
-    return f"Хештеги:\n{hashtags_line}\n\n{text.strip()}{user_line}"[:1020]
+# Build safe caption without hashtags
+def build_caption(text: str, username: str, price: str = None):
+    user_mention = f"@{username}" if username else "пользователь скрыл имя"
+    price_line = f"\n💸 Цена: {price}" if price else ""
+    caption = f"""
+🔹 **Объявление**:
+
+{text.strip()}
+
+{price_line}
+
+📤 **Опубликовал(а)**: {user_mention}
+
+👥 **Написать продавцу**:
+💬 [Написать](https://t.me/{username})
+    """
+    return caption[:1024]  # Ограничение по символам Telegram
 
 # Create contact button
 def contact_seller_button(username: str):
@@ -83,16 +84,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     username = update.message.from_user.username or "аноним"
+    # Добавление цены, если она указана
+    price = None
+    if "Цена:" in text:
+        text, price = text.split("Цена:", 1)
+        price = price.strip()
+
     if is_valid_ad(text):
         await update.message.reply_text("✅ Объявление принято и опубликовано.")
         await context.bot.send_message(
             chat_id=TARGET_CHANNEL_ID,
-            text=build_caption(text, username),
+            text=build_caption(text, username, price),
             reply_markup=contact_seller_button(username)
         )
     else:
         ad_id = update.message.message_id
-        pending_approvals[ad_id] = {"type": "text", "text": text, "username": username}
+        pending_approvals[ad_id] = {"type": "text", "text": text, "username": username, "price": price}
         await context.bot.send_message(
             chat_id=MODERATION_CHAT_ID,
             text=f"Новое текстовое объявление на модерацию:\n{text}",
@@ -104,17 +111,23 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = update.message.caption or ""
     file_id = update.message.photo[-1].file_id
     username = update.message.from_user.username or "аноним"
+    # Аналогично добавим цену
+    price = None
+    if "Цена:" in caption:
+        caption, price = caption.split("Цена:", 1)
+        price = price.strip()
+
     if is_valid_ad(caption):
         await update.message.reply_text("✅ Фотообъявление принято и опубликовано.")
         await context.bot.send_photo(
             chat_id=TARGET_CHANNEL_ID,
             photo=file_id,
-            caption=build_caption(caption, username),
+            caption=build_caption(caption, username, price),
             reply_markup=contact_seller_button(username)
         )
     else:
         ad_id = update.message.message_id
-        pending_approvals[ad_id] = {"type": "photo", "text": caption, "file_id": file_id, "username": username}
+        pending_approvals[ad_id] = {"type": "photo", "text": caption, "file_id": file_id, "username": username, "price": price}
         await context.bot.send_photo(
             chat_id=MODERATION_CHAT_ID,
             photo=file_id,
@@ -138,13 +151,13 @@ async def handle_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_photo(
                 chat_id=TARGET_CHANNEL_ID,
                 photo=ad["file_id"],
-                caption=build_caption(ad["text"], username),
+                caption=build_caption(ad["text"], username, ad["price"]),
                 reply_markup=contact_seller_button(username)
             )
         else:
             await context.bot.send_message(
                 chat_id=TARGET_CHANNEL_ID,
-                text=build_caption(ad["text"], username),
+                text=build_caption(ad["text"], username, ad["price"]),
                 reply_markup=contact_seller_button(username)
             )
         await query.edit_message_text("✅ Объявление одобрено и опубликовано.")
