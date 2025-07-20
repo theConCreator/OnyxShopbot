@@ -1,9 +1,9 @@
 import os
 import asyncio
+import logging
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import logging
 from flask import Flask, jsonify
 import threading
 
@@ -133,8 +133,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # Запуск Telegram бота
-async def run_telegram_bot():
-    application = await ApplicationBuilder().token(TOKEN).build()
+def start_bot():
+    application = ApplicationBuilder().token(TOKEN).build()
 
     # Добавление обработчиков
     application.add_handler(CommandHandler("start", start))
@@ -142,7 +142,7 @@ async def run_telegram_bot():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     logger.info("Telegram bot started.")
-    await application.run_polling(drop_pending_updates=True)
+    application.run_polling(drop_pending_updates=True)
 
 # Запуск Flask-сервера в отдельном потоке
 def start_flask():
@@ -153,8 +153,7 @@ def main():
     threading.Thread(target=start_flask).start()
     
     # Запуск Telegram-бота
-    asyncio.run(run_telegram_bot())
+    start_bot()
 
 if __name__ == '__main__':
     main()
-
