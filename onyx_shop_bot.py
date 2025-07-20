@@ -1,9 +1,9 @@
 import os
 import asyncio
-import logging
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import logging
 from flask import Flask, jsonify
 import threading
 
@@ -55,8 +55,8 @@ FORBIDDEN_WORDS = [
 # Функция для нормализации текста (замена латиницы на кириллицу)
 def normalize_text(text):
     translation = str.maketrans(
-        "aàáäâbcddefghijkllmnñoópqrsstuvwxyz",
-        "абцдефгхийклмнñoópqrsstuvwxyz"
+        "aàáäâbcddefghijklmnoópqrsstuvwxyz",  # Латиница
+        "абцдефгхийклмнñoópqrsstuvwxyz"        # Кириллица
     )
     return text.translate(translation)
 
@@ -133,7 +133,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # Запуск Telegram бота
-def start_bot():
+async def run_telegram_bot():
     application = ApplicationBuilder().token(TOKEN).build()
 
     # Добавление обработчиков
@@ -142,7 +142,7 @@ def start_bot():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     logger.info("Telegram bot started.")
-    application.run_polling(drop_pending_updates=True)
+    await application.run_polling()
 
 # Запуск Flask-сервера в отдельном потоке
 def start_flask():
@@ -153,7 +153,7 @@ def main():
     threading.Thread(target=start_flask).start()
     
     # Запуск Telegram-бота
-    start_bot()
+    asyncio.run(run_telegram_bot())
 
 if __name__ == '__main__':
     main()
