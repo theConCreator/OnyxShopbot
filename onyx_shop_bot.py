@@ -30,7 +30,7 @@ ALLOWED_KEYWORDS = [
     "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
     "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
     "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "нft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "nft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
     "продукция", "товар", "продажа"
 ]
 
@@ -132,24 +132,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Функция для логирования активности бота
-async def log_polling_activity(context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Bot is running... Polling in progress.")
-
 # Запуск Telegram бота
 async def run_telegram_bot():
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = await ApplicationBuilder().token(TOKEN).build()
 
     # Добавление обработчиков
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    # Логирование активности бота
-    application.job_queue.run_repeating(log_polling_activity, interval=10, first=0)
-
     logger.info("Telegram bot started.")
-    await application.run_polling()
+    await application.run_polling(drop_pending_updates=True)
 
 # Запуск Flask-сервера в отдельном потоке
 def start_flask():
@@ -164,5 +157,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
