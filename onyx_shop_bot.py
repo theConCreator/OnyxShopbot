@@ -1,11 +1,11 @@
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import multiprocessing
 from flask import Flask
-import asyncio
+import multiprocessing
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -124,11 +124,13 @@ def start_flask():
 
 # Основная функция для запуска
 def main():
+    # Запускаем Flask в отдельном процессе
     flask_process = multiprocessing.Process(target=start_flask)
     flask_process.start()
     
-    # Запускаем Telegram-бота
-    asyncio.run(run_telegram_bot())
+    # Запускаем Telegram-бота в основном потоке
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(run_telegram_bot())
 
 if __name__ == "__main__":
     main()
