@@ -1,84 +1,57 @@
 import os
-import asyncio
+import logging
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import logging
-from flask import Flask, jsonify
-import threading
+import multiprocessing
+from flask import Flask
+import asyncio
 
-# Загрузка переменных из .env файла
+# Загрузка переменных окружения
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
-MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
-REJECTED_CHAT_ID = int(os.getenv("REJECTED_CHAT_ID"))
 
-# Flask для фейкового пинга
+# Flask приложение
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return jsonify({"status": "Bot is running"})
+    return 'Bot is alive!'
 
-# Включаем logging для ошибок
+# Логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Список разрешённых (обязательных) слов для публикации
-ALLOWED_KEYWORDS = [
-    "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
-    "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
-    "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "nft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
-    "продукция", "товар", "продажа"
-]
+# Список разрешённых слов
+ALLOWED_KEYWORDS = ["покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy"]
 
-# Расширенный список запрещённых слов (мат, жаргонизмы, непристойности, мошенничество)
-FORBIDDEN_WORDS = [
-    "реклама", "подпишись", "подписка", "реферал", "ссылка", "instagram", "youtube", "tiktok", 
-    "http", "www", ".com", ".ru", "спам", "порнография", "наркотики", "вагина", "анальный", 
-    "суицид", "убийство", "экстремизм", "бесплатно", "кредит", "лохотрон", "обман", "жертва", 
-    "мафия", "мошенничество", "пидор", "гей", "лесбиянка", "порн", "видеочат", "сексуальные", 
-    "секс", "массажист", "платная подписка", "накрутка", "депозит", "привлечь", "пополнение",
-    "водка", "табак", "пиво", "наркота", "путана", "проституция", "деньги в долг", "кредитки",
-    "микрозаймы", "псевдонаука", "влияние", "афера", "игры на деньги", "стриптиз", "танцы на пилоне", 
-    "игры казино", "игровые автоматы", "лото", "лотереи", "манипуляция", "реклама бизнеса", 
-    "махинации", "грузовики", "оружие", "боеприпасы", "интернет-торговля оружием", "пистолет", "пневматика",
-    "огнестрельное", "оружие", "кастеты", "порнобизнес", "антибиотики", "стимуляторы", "психотропы",
-    "психоделики", "мародерство", "нацизм", "фашизм", "терроризм", "радикальные", "дискриминация",
-    "ебать", "пизда", "хуй", "сука", "блядь", "мудак", "пидорас", "заебал", "нахуй", "жопа", "ебаный",
-    "блуд", "ебло", "пиздить", "нахера", "погоди", "черти", "сучка", "мразь", "сволочь", "гондон", "урод",
-    "псих", "пиздить", "нахера", "погоди", "черти", "сучка", "мразь", "сволочь"
-]
+# Запрещённые слова
+FORBIDDEN_WORDS = ["реклама", "спам", "порнография", "наркотики", "мошенничество", "терроризм"]
 
-# Функция для нормализации текста (замена латиницы на кириллицу)
+# Функция для нормализации текста
 def normalize_text(text):
-    translation = str.maketrans(
-        "aàáäâbcddefghijklmnoópqrsstuvwxyz",  # Латиница
-        "абцдефгхийклмнñoópqrsstuvwxyz"        # Кириллица
-    )
+    translation = str.maketrans("aàáäâbcddefghijklmnoópqrsstuvwxyz", "абцдефгхийклмнñoópqrsstuvwxyz")
     return text.translate(translation)
 
-# Функция для проверки наличия запрещённых слов
+# Проверка на запрещённые слова
 def contains_forbidden_words(text):
     normalized_text = normalize_text(text.lower())
-    return any(forbidden_word in normalized_text for forbidden_word in FORBIDDEN_WORDS)
+    return any(word in normalized_text for word in FORBIDDEN_WORDS)
 
-# Функция для проверки, содержит ли текст обязательные ключевые слова
+# Проверка на наличие обязательных ключевых слов
 def contains_allowed_keywords(text):
     normalized_text = normalize_text(text.lower())
     return any(keyword in normalized_text for keyword in ALLOWED_KEYWORDS)
 
-# Функция для обработки команды /start
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Received /start command from {update.message.from_user.username}")
-    # Отправляем картинку и текст в одном сообщении
-    photo_path = 'onyxshopbot.png'  # Указываем путь к картинке в той же директории
+    logger.info(f"Received /start from {update.message.from_user.username}")
+    # Отправляем картинку и приветственное сообщение
+    photo_path = 'onyxshopbot.png'  # Указываем путь к картинке
     await update.message.reply_photo(
-        photo=open(photo_path, 'rb'),  # Открываем картинку для отправки
-        caption="Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p.\n"
-                "Для отправки просто пришлите объявление боту."
+        photo=open(photo_path, 'rb'),
+        caption="Привет! Это бот для публикации объявлений о продаже, покупке и обмене."
     )
 
 # Обработка текстовых сообщений
@@ -100,14 +73,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Объявление отклонено. Причина: отсутствуют обязательные ключевые слова (например: покупка, продажа, обмен).")
         return
 
-    # Если объявление прошло все проверки, публикуем его
+    # Если прошло все проверки
     await update.message.reply_text("✅ Объявление принято и опубликовано.")
     await context.bot.send_message(
         chat_id=TARGET_CHANNEL_ID,
         text=f"Объявление от @{username}:\n{text}"
     )
 
-# Обработка сообщений с фото
+# Обработка фото
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = update.message.caption or ""
     file_id = update.message.photo[-1].file_id
@@ -127,7 +100,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Фотообъявление отклонено. Причина: отсутствуют обязательные ключевые слова (например: покупка, продажа, обмен).")
         return
 
-    # Если объявление прошло все проверки, публикуем его
+    # Если прошло все проверки
     await update.message.reply_text("✅ Фотообъявление принято и опубликовано.")
     await context.bot.send_photo(
         chat_id=TARGET_CHANNEL_ID,
@@ -135,11 +108,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Запуск Telegram бота
+# Запуск Telegram-бота
 async def run_telegram_bot():
     application = ApplicationBuilder().token(TOKEN).build()
-
-    # Добавление обработчиков
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
@@ -147,17 +118,17 @@ async def run_telegram_bot():
     logger.info("Telegram bot started.")
     await application.run_polling()
 
-# Запуск Flask-сервера в отдельном потоке
+# Запуск Flask
 def start_flask():
     app.run(host='0.0.0.0', port=8080)
 
+# Основная функция для запуска
 def main():
-    # Запуск Flask в отдельном потоке
-    threading.Thread(target=start_flask, daemon=True).start()
+    flask_process = multiprocessing.Process(target=start_flask)
+    flask_process.start()
     
-    # Запуск Telegram-бота в фоновом потоке
-    asyncio.get_event_loop().create_task(run_telegram_bot())
-    asyncio.get_event_loop().run_forever()
+    # Запускаем Telegram-бота
+    asyncio.run(run_telegram_bot())
 
 if __name__ == "__main__":
     main()
