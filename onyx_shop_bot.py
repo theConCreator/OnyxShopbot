@@ -103,6 +103,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=TARGET_CHANNEL_ID,
         text=f"Объявление от @{username}:\n{text}"
     )
+    logger.info(f"Announcement from {username} published successfully.")
 
 # Обработка сообщений с фото
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -131,6 +132,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo=file_id,
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
+    logger.info(f"Photo announcement from {username} published successfully.")
 
 # Запуск Telegram бота
 async def run_telegram_bot():
@@ -157,5 +159,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
