@@ -132,9 +132,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Логирование активности бота
-async def log_polling_activity(context):
-    logger.info("Polling activity: Bot is checking for new messages.")
+# Функция для логирования активности бота
+async def log_polling_activity(context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Bot is running... Polling in progress.")
 
 # Запуск Telegram бота
 async def run_telegram_bot():
@@ -145,9 +145,8 @@ async def run_telegram_bot():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    # Настроим задачу, которая будет выполняться каждые 10 секунд (логирование активности)
-    job_queue = application.job_queue
-    job_queue.run_repeating(log_polling_activity, interval=10, first=0)
+    # Логирование активности бота
+    application.job_queue.run_repeating(log_polling_activity, interval=10, first=0)
 
     logger.info("Telegram bot started.")
     await application.run_polling()
@@ -165,4 +164,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
