@@ -131,18 +131,17 @@ async def run_telegram_bot():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     await application.run_polling()
 
-# Запуск Flask-сервера
-def run_flask():
+# Запуск Flask-сервера в отдельном потоке
+def start_flask():
     app.run(host='0.0.0.0', port=8080)
 
-# Запуск Flask и Telegram-бота в одном процессе
 def main():
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
+    # Запуск Flask в отдельном потоке
+    threading.Thread(target=start_flask).start()
+    
+    # Запуск Telegram-бота
+    asyncio.run(run_telegram_bot())
 
-    asyncio.run(run_telegram_bot())  # Telegram bot running in main thread
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
-
 
