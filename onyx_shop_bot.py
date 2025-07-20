@@ -1,25 +1,23 @@
 import os
 import logging
-import asyncio
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
-import multiprocessing
 
-# Загрузка переменных окружения
+# Загружаем переменные из .env
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 
-# Flask приложение
+# Инициализация Flask
 app = Flask(__name__)
 
 @app.route('/')
 def index():
     return 'Bot is alive!'
 
-# Логирование
+# Настроим логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -124,13 +122,13 @@ def start_flask():
 
 # Основная функция для запуска
 def main():
-    # Запускаем Flask в отдельном процессе
-    flask_process = multiprocessing.Process(target=start_flask)
-    flask_process.start()
-    
+    from threading import Thread
+    # Запускаем Flask в отдельном потоке
+    flask_thread = Thread(target=start_flask)
+    flask_thread.start()
+
     # Запускаем Telegram-бота в основном потоке
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_telegram_bot())
+    asyncio.run(run_telegram_bot())
 
 if __name__ == "__main__":
     main()
