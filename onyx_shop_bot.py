@@ -135,9 +135,9 @@ async def run_telegram_bot():
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-# Запуск Flask и Telegram-бота в разных потоках
+# Запуск Flask и Telegram-бота в одном процессе
 def main():
-    flask_thread = threading.Thread(target=run_flask)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
     asyncio.run(run_telegram_bot())  # Telegram bot running in main thread
