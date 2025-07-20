@@ -21,9 +21,6 @@ app = Flask(__name__)
 def index():
     return jsonify({"status": "Bot is running"})
 
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
 # Включаем logging для ошибок
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,7 +30,7 @@ ALLOWED_KEYWORDS = [
     "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
     "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
     "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "nft", "нфт", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "нft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
     "продукция", "товар", "продажа"
 ]
 
@@ -134,7 +131,11 @@ async def run_telegram_bot():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     await application.run_polling()
 
-# Запуск Flask-сервера и Telegram-бота с помощью asyncio
+# Запуск Flask-сервера в отдельном потоке
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+# Запуск Flask и Telegram-бота с использованием asyncio
 async def main():
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
@@ -144,4 +145,5 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
 
