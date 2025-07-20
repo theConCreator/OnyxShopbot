@@ -155,7 +155,7 @@ def main():
     # Запуск Flask в отдельном потоке
     threading.Thread(target=start_flask, daemon=True).start()
     
-    # Запуск Telegram-бота в текущем цикле событий
+    # Запуск Telegram-бота в фоновом потоке
     asyncio.get_event_loop().create_task(run_telegram_bot())
     
     # Блокируем основной поток, чтобы сервер работал
