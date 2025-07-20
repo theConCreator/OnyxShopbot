@@ -2,7 +2,7 @@ import os
 import threading
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 from flask import Flask
 
@@ -32,7 +32,7 @@ ALLOWED_KEYWORDS = [
     "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
     "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
     "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "nft", "нфт", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "нft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
     "продукция", "товар", "продажа"
 ]
 
@@ -125,21 +125,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Запуск Telegram-бота в отдельном потоке
+# Запуск Telegram-бота
 def run_telegram_bot():
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
     application.run_polling()
 
+# Запуск Flask-сервера и Telegram-бота в отдельных потоках
 if __name__ == '__main__':
-    # Запуск Flask
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
 
-    # Запуск Telegram-бота
     telegram_thread = threading.Thread(target=run_telegram_bot)
     telegram_thread.start()
+
 
