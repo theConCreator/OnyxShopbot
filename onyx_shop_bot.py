@@ -73,9 +73,12 @@ def contains_allowed_keywords(text):
 # Функция для обработки команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Received /start command from {update.message.from_user.username}")
-    await update.message.reply_text(
-        "Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p.\n"
-        "Для отправки просто пришлите объявление боту."
+    # Отправляем картинку и текст в одном сообщении
+    photo_path = 'onyxshopbot.png'  # Указываем путь к картинке в той же директории
+    await update.message.reply_photo(
+        photo=open(photo_path, 'rb'),  # Открываем картинку для отправки
+        caption="Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p.\n"
+                "Для отправки просто пришлите объявление боту."
     )
 
 # Обработка текстовых сообщений
