@@ -1,11 +1,11 @@
 import os
-import threading
 import asyncio
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
-from flask import Flask
+from flask import Flask, jsonify
+from threading import Thread
 
 # Загрузка переменных из .env файла
 load_dotenv()
@@ -19,7 +19,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "Bot is running."
+    return jsonify({"status": "Bot is running"})
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -33,7 +33,7 @@ ALLOWED_KEYWORDS = [
     "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
     "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
     "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "нft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "nft", "нфт", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
     "продукция", "товар", "продажа"
 ]
 
@@ -134,12 +134,14 @@ async def run_telegram_bot():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     await application.run_polling()
 
-# Запуск Flask-сервера и Telegram-бота
-if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask)
+# Запуск Flask-сервера и Telegram-бота с помощью asyncio
+async def main():
+    flask_thread = Thread(target=run_flask)
     flask_thread.start()
 
-    # Запуск Telegram-бота с помощью asyncio
-    asyncio.run(run_telegram_bot())
+    # Запуск Telegram-бота
+    await run_telegram_bot()
 
+if __name__ == '__main__':
+    asyncio.run(main())
 
