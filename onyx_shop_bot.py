@@ -72,6 +72,7 @@ def contains_allowed_keywords(text):
 
 # Функция для обработки команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Received /start command from {update.message.from_user.username}")
     await update.message.reply_text(
         "Привет! Это бот для публикации объявлений о продаже, покупке и обмене в @onyx_sh0p.\n"
         "Для отправки просто пришлите объявление боту."
@@ -82,13 +83,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     username = update.message.from_user.username or "аноним"
     
+    logger.info(f"Received message from {username}: {text}")
+
     # Проверка на наличие запрещённых слов
     if contains_forbidden_words(text):
+        logger.warning(f"Message from {username} contains forbidden words.")
         await update.message.reply_text("❌ Объявление отклонено. Причина: содержит запрещённые слова.")
         return
     
     # Проверка на обязательные ключевые слова
     if not contains_allowed_keywords(text):
+        logger.warning(f"Message from {username} does not contain allowed keywords.")
         await update.message.reply_text("❌ Объявление отклонено. Причина: отсутствуют обязательные ключевые слова (например: покупка, продажа, обмен).")
         return
 
@@ -105,13 +110,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_id = update.message.photo[-1].file_id
     username = update.message.from_user.username or "аноним"
     
+    logger.info(f"Received photo from {username} with caption: {caption}")
+
     # Проверка на наличие запрещённых слов
     if contains_forbidden_words(caption):
+        logger.warning(f"Photo from {username} contains forbidden words.")
         await update.message.reply_text("❌ Фотообъявление отклонено. Причина: содержит запрещённые слова.")
         return
     
     # Проверка на обязательные ключевые слова
     if not contains_allowed_keywords(caption):
+        logger.warning(f"Photo from {username} does not contain allowed keywords.")
         await update.message.reply_text("❌ Фотообъявление отклонено. Причина: отсутствуют обязательные ключевые слова (например: покупка, продажа, обмен).")
         return
 
@@ -123,12 +132,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-# Запуск Telegram-бота
+# Запуск Telegram бота
 async def run_telegram_bot():
     application = ApplicationBuilder().token(TOKEN).build()
+
+    # Добавление обработчиков
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+
+    logger.info("Telegram bot started.")
     await application.run_polling()
 
 # Запуск Flask-сервера в отдельном потоке
@@ -144,4 +157,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
