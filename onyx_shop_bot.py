@@ -157,9 +157,7 @@ def main():
     
     # Запуск Telegram-бота в фоновом потоке
     asyncio.get_event_loop().create_task(run_telegram_bot())
-    
-    # Блокируем основной поток, чтобы сервер работал
     asyncio.get_event_loop().run_forever()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
