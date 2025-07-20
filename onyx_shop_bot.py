@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 from flask import Flask, jsonify
-from threading import Thread
+import threading
 
 # Загрузка переменных из .env файла
 load_dotenv()
@@ -131,18 +131,24 @@ async def run_telegram_bot():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     await application.run_polling()
 
-# Запуск Flask-сервера в отдельном потоке
+# Запуск Flask-сервера
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-# Запуск Flask и Telegram-бота в отдельных потоках
+# Запуск Flask и Telegram-бота в одном процессе
 def main():
-    flask_thread = Thread(target=run_flask)
+    loop = asyncio.get_event_loop()
+
+    # Запуск Flask сервера в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
     flask_thread.start()
 
-    asyncio.run(run_telegram_bot())
+    # Запуск Telegram-бота в асинхронном цикле
+    loop.run_until_complete(run_telegram_bot())
 
 if __name__ == '__main__':
     main()
+
 
 
