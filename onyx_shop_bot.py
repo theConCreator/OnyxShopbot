@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import logging
-import re
 from flask import Flask
 
 # Загрузка переменных из .env файла
@@ -28,16 +27,12 @@ def run_flask():
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Включаем фейковый Flask для пинга
-flask_thread = threading.Thread(target=run_flask)
-flask_thread.start()
-
 # Список разрешённых (обязательных) слов для публикации
 ALLOWED_KEYWORDS = [
     "покупка", "продажа", "обмен", "sell", "продаю", "куплю", "trade", "buy", "b",
     "продам", "обменяю", "продажа", "приобрести", "закупка", "обмен", "совершить сделку", 
     "покупаю", "торговля", "обменять", "картридж", "мобильник", "телефон", "фотоаппарат",
-    "нft", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
+    "nft", "нфт", "цифровой", "сделка", "криптовалюта", "usdt", "dollar", "биткойн", "btc", "eth", 
     "продукция", "товар", "продажа"
 ]
 
@@ -130,7 +125,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Фотообъявление от @{username}:\n{caption}"
     )
 
-if __name__ == '__main__':
+# Запуск Telegram-бота в отдельном потоке
+def run_telegram_bot():
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
@@ -138,4 +134,12 @@ if __name__ == '__main__':
 
     application.run_polling()
 
+if __name__ == '__main__':
+    # Запуск Flask
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+
+    # Запуск Telegram-бота
+    telegram_thread = threading.Thread(target=run_telegram_bot)
+    telegram_thread.start()
 
