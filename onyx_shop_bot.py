@@ -43,8 +43,16 @@ FORBIDDEN = ["реклама","спам","ссылка","instagram","http","на
 pending = {}
 
 def normalize(text: str) -> str:
-    tr = str.maketrans("абвгдеёжзийклмнопрстуфхцчшщъыьэюя","abvgdeezhziyklmnoprstufhtschshsh_y_eua")
-    return text.translate(tr)
+    table = str.maketrans({
+        "а": "a",  "б": "b",  "в": "v",  "г": "g",  "д": "d",
+        "е": "e",  "ё": "e",  "ж": "zh", "з": "z",  "и": "i",
+        "й": "y",  "к": "k",  "л": "l",  "м": "m",  "н": "n",
+        "о": "o",  "п": "p",  "р": "r",  "с": "s",  "т": "t",
+        "у": "u",  "ф": "f",  "х": "h",  "ц": "ts", "ч": "ch",
+        "ш": "sh", "щ": "sh", "ъ": "_",  "ы": "y",  "ь": "_",
+        "э": "e",  "ю": "yu", "я": "ya",
+    })
+    return text.translate(table)
 
 def has_forbidden(text: str) -> bool:
     nt = normalize(text.lower())
@@ -87,8 +95,8 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(
             photo=img,
             caption=(
-                "Привет! Это бот магазина NFT.\n"
-                "Просто пришлите текст объявления или фото с подписью, и я его обработаю."
+                "Привет! Это бот магазина Onyx Shop.\n"
+                "Чтобы выложить объявление просто отправьте его боту (до 100 символов, не более одной картинки)"
             )
         )
 
