@@ -80,7 +80,11 @@ def build_caption(text: str, user: str) -> str:
     return " ".join(uniq) + "\n\n" + text.strip()
 
 def contact_button(user: str):
-    return InlineKeyboardMarkup([[InlineKeyboardButton("💬 Написать продавцу", url=f"https://t.me/{user}")]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Написать продавцу", url=f"https://t.me/{user}")],
+        [InlineKeyboardButton("Разместить объявление", url="https://t.me/onyxsh0pbot")]
+    ])
+
 
 def moderation_buttons(ad_id: int):
     return InlineKeyboardMarkup([[
