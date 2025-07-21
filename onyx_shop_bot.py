@@ -88,6 +88,16 @@ def moderation_buttons(ad_id: int):
         InlineKeyboardButton("❌ Отклонить",  callback_data=f"reject_{ad_id}")
     ]])
 
+def format_announcement(text: str, username: str) -> str:
+    return (
+        "Объявление\n"
+        "--------------------\n"
+        f"{text.strip()}\n"
+        "--------------------\n"
+        f"Отправил(а): @{username}"
+    )
+
+
 # ——— Хендлеры ——————————————————————————————————————
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/start from @{update.effective_user.username}")
@@ -115,7 +125,7 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Объявление опубликовано.")
     await ctx.bot.send_message(
         chat_id=TARGET_CHANNEL_ID,
-        text=build_caption(txt,user),
+        text=format_announcement(txt, user),
         reply_markup=contact_button(user)
     )
 
@@ -152,32 +162,37 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     act, sid = q.data.split("_")
-    ad = pending.pop(int(sid),None)
+    ad = pending.pop(int(sid), None)
+
     if not ad:
         return await q.edit_message_text("❌ Уже обработано.")
 
-    user, cap = ad["user"], ad.get("cap","")
-    if act=="approve":
-        if ad["type"]=="photo":
+    user = ad["user"]
+    cap = ad.get("cap", "")
+
+    if act == "approve":
+        if ad["type"] == "photo":
             await ctx.bot.send_photo(
                 chat_id=TARGET_CHANNEL_ID,
                 photo=ad["fid"],
-                caption=build_caption(cap,user),
+                caption=format_announcement(cap, user),
                 reply_markup=contact_button(user)
             )
         else:
             await ctx.bot.send_message(
                 chat_id=TARGET_CHANNEL_ID,
-                text=build_caption(cap,user),
+                text=format_announcement(cap, user),
                 reply_markup=contact_button(user)
             )
         await q.edit_message_text("✅ Одобрено и опубликовано.")
     else:
         await q.edit_message_text("❌ Отклонено модератором.")
         await ctx.bot.send_message(
-            REJECTED_CHAT_ID,
+            chat_id=REJECTED_CHAT_ID,
             text=f"Отклонено @{user}:\n{cap}"
         )
+
+
 
 # ——— Запуск бота ——————————————————————————————————————
 def run_bot():
