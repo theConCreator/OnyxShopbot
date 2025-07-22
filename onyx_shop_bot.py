@@ -13,14 +13,14 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ——— Загрузка переменных среды ——————————————————————
+# ——— Загрузка конфигурации ——————————————————————————————
 load_dotenv()
 TOKEN              = os.getenv("BOT_TOKEN")
 TARGET_CHANNEL_ID  = int(os.getenv("TARGET_CHANNEL_ID"))
 MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
 REJECTED_CHAT_ID   = int(os.getenv("REJECTED_CHAT_ID"))
 
-# ——— Flask (для Render ping) ————————————————————————————
+# ——— Flask для пинга Render ———————————————————————————
 app = Flask(__name__)
 @app.route("/", methods=["GET", "HEAD"])
 def alive():
@@ -33,69 +33,42 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ——— Ключевые слова —————————————————————————————————————
+# ——— Ключевые и запрещённые слова ——————————————————————
 SALE_KW   = ["продажа", "продаю", "продам", "отдам", "sell", "селл", "сейл", "аренда", "сдам", "солью"]
 BUY_KW    = ["куплю", "покупка", "buy", "возьму", "заберу"]
 TRADE_KW  = ["обмен", "меняю", "trade", "swap"]
 CAT_KW    = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
-FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "http", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука"]
+FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "http", "наркотики", "порн", "мошенничество",
+             "ебать", "хуй", "сука"]
 
 pending = {}
 
-# ——— Нормализация текста ———————————————————————————
 def normalize(text: str) -> str:
     table = str.maketrans({
-        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d",
-        "е": "e", "ё": "e", "ж": "zh", "з": "z", "и": "i",
-        "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
-        "о": "o", "п": "p", "р": "r", "с": "s", "т": "t",
-        "у": "u", "ф": "f", "х": "h", "ц": "ts", "ч": "ch",
-        "ш": "sh", "щ": "sh", "ъ": "_", "ы": "y", "ь": "_",
-        "э": "e", "ю": "yu", "я": "ya",
+        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh",
+        "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+        "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts",
+        "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "_", "ы": "y", "ь": "_", "э": "e", "ю": "yu", "я": "ya",
     })
-    return text.translate(table)
+    return text.lower().translate(table)
 
-# ——— Проверка запрещённых слов ——————————————————————
 def has_forbidden(text: str) -> bool:
-    nt = normalize(text.lower())
-    words = nt.split()
-    forbidden_normalized = [normalize(f) for f in FORBIDDEN]
+    nt = normalize(text)
+    return any(word in nt for word in FORBIDDEN)
 
-    for word in words:
-        if word in forbidden_normalized:
-            return True
-    for f in forbidden_normalized:
-        if f in nt:
-            return True
-    return False
-
-# ——— Проверка ключевых слов —————————————————————————
 def has_required(text: str) -> bool:
-    nt = normalize(text.lower())
-    words = nt.split()
+    nt = normalize(text)
+    return any(word in nt for nt_kw in [SALE_KW, BUY_KW, TRADE_KW] for word in nt_kw if word in nt)
 
-    sale_kw  = [normalize(k) for k in SALE_KW]
-    buy_kw   = [normalize(k) for k in BUY_KW]
-    trade_kw = [normalize(k) for k in TRADE_KW]
-
-    for word in words:
-        if word in sale_kw + buy_kw + trade_kw:
-            return True
-    for k in sale_kw + buy_kw + trade_kw:
-        if k in nt:
-            return True
-    return False
-
-# ——— Формирование текста и кнопок ———————————————————
 def build_caption(text: str, user: str) -> str:
     tags = []
-    words = text.lower().split()
-    for w in words:
-        if any(k in w for k in SALE_KW): tags.append("#продажа")
-        if any(k in w for k in BUY_KW): tags.append("#покупка")
-        if any(k in w for k in TRADE_KW): tags.append("#обмен")
+    words = normalize(text).split()
+    for word in words:
+        if any(k in word for k in SALE_KW):   tags.append("#продажа")
+        if any(k in word for k in BUY_KW):    tags.append("#покупка")
+        if any(k in word for k in TRADE_KW):  tags.append("#обмен")
         for c in CAT_KW:
-            if c in w: tags.append(f"#{c}")
+            if c in word: tags.append(f"#{c}")
     tags.append(f"@{user}")
     seen = set(); uniq = []
     for t in tags:
@@ -112,7 +85,7 @@ def contact_button(user: str):
 def moderation_buttons(ad_id: int):
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{ad_id}"),
-        InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{ad_id}")
+        InlineKeyboardButton("❌ Отклонить",  callback_data=f"reject_{ad_id}")
     ]])
 
 def format_announcement(text: str, username: str) -> str:
@@ -124,7 +97,7 @@ def format_announcement(text: str, username: str) -> str:
         f"Отправил(а): @{username}"
     )
 
-# ——— Хендлеры ———————————————————————————————————————————
+# ——— Хендлеры ——————————————————————————————————————
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/start from @{update.effective_user.username}")
     with open("onyxshopbot.png", "rb") as img:
@@ -132,20 +105,22 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             photo=img,
             caption=(
                 "Привет! Это бот магазина Onyx Shop.\n"
-                "Чтобы выложить объявление, просто отправьте его боту (до 100 символов, не более одной картинки)."
+                "Чтобы выложить объявление, просто отправьте его сюда (до 100 символов, максимум одна картинка)."
             )
         )
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    txt = update.message.text or ""
+    txt  = update.message.text or ""
     user = update.effective_user.username or "аноним"
-    mid = update.message.message_id
+    mid  = update.message.message_id
     logger.info(f"Text from @{user}: {txt}")
 
+    if len(txt) > 100:
+        return await update.message.reply_text("❌ Отклонено: сообщение превышает 100 символов.")
     if has_forbidden(txt):
         return await update.message.reply_text("❌ Отклонено: найдено запрещённое слово.")
     if not has_required(txt):
-        return await update.message.reply_text("❌ Отклонено: нет ключевых слов (куплю/продажа/обмен).")
+        return await update.message.reply_text("❌ Отклонено: нет ключевых слов (куплю / продажа / обмен).")
 
     await update.message.reply_text("✅ Объявление опубликовано.")
     await ctx.bot.send_message(
@@ -155,20 +130,24 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    cap = update.message.caption or ""
-    fid = update.message.photo[-1].file_id
+    cap  = update.message.caption or ""
     user = update.effective_user.username or "аноним"
-    mid = update.message.message_id
+    mid  = update.message.message_id
+    photos = update.message.photo
     logger.info(f"Photo from @{user}, cap: {cap}")
 
+    if len(photos) > 1:
+        return await update.message.reply_text("❌ Отклонено: можно прикрепить не более одной фотографии.")
+    if len(cap) > 100:
+        return await update.message.reply_text("❌ Отклонено: подпись превышает 100 символов.")
     if has_forbidden(cap):
         return await update.message.reply_text("❌ Фото отклонено: найдено запрещённое слово.")
     if not has_required(cap):
-        pending[mid] = {"type": "photo", "fid": fid, "cap": cap, "user": user}
+        pending[mid] = {"type": "photo", "fid": photos[-1].file_id, "cap": cap, "user": user}
         await update.message.reply_text("🔎 Фото отправлено на модерацию.")
         return await ctx.bot.send_photo(
             chat_id=MODERATION_CHAT_ID,
-            photo=fid,
+            photo=photos[-1].file_id,
             caption=cap,
             reply_markup=moderation_buttons(mid)
         )
@@ -176,7 +155,7 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Фото опубликовано.")
     await ctx.bot.send_photo(
         chat_id=TARGET_CHANNEL_ID,
-        photo=fid,
+        photo=photos[-1].file_id,
         caption=build_caption(cap, user),
         reply_markup=contact_button(user)
     )
@@ -194,19 +173,12 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cap = ad.get("cap", "")
 
     if act == "approve":
-        if ad["type"] == "photo":
-            await ctx.bot.send_photo(
-                chat_id=TARGET_CHANNEL_ID,
-                photo=ad["fid"],
-                caption=format_announcement(cap, user),
-                reply_markup=contact_button(user)
-            )
-        else:
-            await ctx.bot.send_message(
-                chat_id=TARGET_CHANNEL_ID,
-                text=format_announcement(cap, user),
-                reply_markup=contact_button(user)
-            )
+        await ctx.bot.send_photo(
+            chat_id=TARGET_CHANNEL_ID,
+            photo=ad["fid"],
+            caption=format_announcement(cap, user),
+            reply_markup=contact_button(user)
+        )
         await q.edit_message_text("✅ Одобрено и опубликовано.")
     else:
         await q.edit_message_text("❌ Отклонено модератором.")
@@ -217,7 +189,11 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ——— Запуск бота ——————————————————————————————————————
 def run_bot():
-    app_bt = ApplicationBuilder().token(TOKEN).build()
+    app_bt = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .build()
+    )
     app_bt.add_handler(CommandHandler("start", start_cmd))
     app_bt.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app_bt.add_handler(MessageHandler(filters.PHOTO, photo_handler))
