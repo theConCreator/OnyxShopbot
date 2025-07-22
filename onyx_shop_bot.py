@@ -123,7 +123,7 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
-            caption="Привет, это бот магазина Onyx Shop. Чтобы опубликовать объявление, просто отправь текст (правила публикации - /rules)."
+            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила публикации - /rules)."
         )
 
 async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
