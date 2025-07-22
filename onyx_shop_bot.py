@@ -48,12 +48,10 @@ RENT_KW = ["сдам", "аренда", "арендую", "сниму", "rent"]
 CAT_KW = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
 FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука", "подпишись", "заходи"]
 
-# Таймеры
 last_post_time = {}
 POST_COOLDOWN = timedelta(hours=2)
 pending = {}
 
-# Функции
 def count_symbols(text: str) -> int:
     return len(text)
 
@@ -170,6 +168,10 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cap = update.message.caption or ""
     photos = update.message.photo or []
     mid = update.message.message_id
+
+    # Блокировка медиагрупп (несколько фото в одном сообщении)
+    if update.message.media_group_id is not None:
+        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([
