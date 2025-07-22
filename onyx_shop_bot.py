@@ -13,14 +13,14 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ——— Загрузка конфигурации ——————————————————————————————
+# ——— Загрузка переменных среды ——————————————————————
 load_dotenv()
 TOKEN              = os.getenv("BOT_TOKEN")
 TARGET_CHANNEL_ID  = int(os.getenv("TARGET_CHANNEL_ID"))
 MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
 REJECTED_CHAT_ID   = int(os.getenv("REJECTED_CHAT_ID"))
 
-# ——— Flask для пинга Render ———————————————————————————
+# ——— Flask (для Render ping) ————————————————————————————
 app = Flask(__name__)
 @app.route("/", methods=["GET", "HEAD"])
 def alive():
@@ -33,52 +33,75 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ——— Списки ключевых и запрещённых слов —————————————————
-SALE_KW   = ["продажа","продаю","продам","отдам","sell","селл","сейл","аренда","сдам","солью"]
-BUY_KW    = ["куплю","покупка","buy","возьму","заберу"]
-TRADE_KW  = ["обмен","меняю","trade","swap"]
-CAT_KW    = ["nft","чат","канал","доллары","тон","usdt","звёзды","подарки"]
-FORBIDDEN = ["спам","ссылка","instagram","http","наркотики","порн","мошенничество","ебать","хуй","сука","заходи",","заходите","подпишись","подписывайтесь","розыгрыш","розыгрыши"]
+# ——— Ключевые слова —————————————————————————————————————
+SALE_KW   = ["продажа", "продаю", "продам", "отдам", "sell", "селл", "сейл", "аренда", "сдам", "солью"]
+BUY_KW    = ["куплю", "покупка", "buy", "возьму", "заберу"]
+TRADE_KW  = ["обмен", "меняю", "trade", "swap"]
+CAT_KW    = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
+FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "http", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука"]
 
 pending = {}
 
-# ——— Нормализация ——————————————————————————————————————
+# ——— Нормализация текста ———————————————————————————
 def normalize(text: str) -> str:
     table = str.maketrans({
-        "а": "a",  "б": "b",  "в": "v",  "г": "g",  "д": "d",
-        "е": "e",  "ё": "e",  "ж": "zh", "з": "z",  "и": "i",
-        "й": "y",  "к": "k",  "л": "l",  "м": "m",  "н": "n",
-        "о": "o",  "п": "p",  "р": "r",  "с": "s",  "т": "t",
-        "у": "u",  "ф": "f",  "х": "h",  "ц": "ts", "ч": "ch",
-        "ш": "sh", "щ": "sh", "ъ": "_",  "ы": "y",  "ь": "_",
-        "э": "e",  "ю": "yu", "я": "ya",
+        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d",
+        "е": "e", "ё": "e", "ж": "zh", "з": "z", "и": "i",
+        "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
+        "о": "o", "п": "p", "р": "r", "с": "s", "т": "t",
+        "у": "u", "ф": "f", "х": "h", "ц": "ts", "ч": "ch",
+        "ш": "sh", "щ": "sh", "ъ": "_", "ы": "y", "ь": "_",
+        "э": "e", "ю": "yu", "я": "ya",
     })
     return text.translate(table)
 
-# ——— Проверки текста ————————————————————————————————————
+# ——— Проверка запрещённых слов ——————————————————————
 def has_forbidden(text: str) -> bool:
     nt = normalize(text.lower())
-    return any(normalize(f) in nt for f in FORBIDDEN)
+    words = nt.split()
+    forbidden_normalized = [normalize(f) for f in FORBIDDEN]
 
+    for word in words:
+        if word in forbidden_normalized:
+            return True
+    for f in forbidden_normalized:
+        if f in nt:
+            return True
+    return False
+
+# ——— Проверка ключевых слов —————————————————————————
 def has_required(text: str) -> bool:
     nt = normalize(text.lower())
+    words = nt.split()
+
     sale_kw  = [normalize(k) for k in SALE_KW]
     buy_kw   = [normalize(k) for k in BUY_KW]
     trade_kw = [normalize(k) for k in TRADE_KW]
-    return any(k in nt for k in sale_kw + buy_kw + trade_kw)
 
-# ——— Построение подписей и кнопок —————————————————————
+    for word in words:
+        if word in sale_kw + buy_kw + trade_kw:
+            return True
+    for k in sale_kw + buy_kw + trade_kw:
+        if k in nt:
+            return True
+    return False
+
+# ——— Формирование текста и кнопок ———————————————————
 def build_caption(text: str, user: str) -> str:
-    tags = set()
-    for w in text.lower().split():
-        nw = normalize(w)
-        if any(normalize(k) in nw for k in SALE_KW):  tags.add("#продажа")
-        if any(normalize(k) in nw for k in BUY_KW):   tags.add("#покупка")
-        if any(normalize(k) in nw for k in TRADE_KW): tags.add("#обмен")
+    tags = []
+    words = text.lower().split()
+    for w in words:
+        if any(k in w for k in SALE_KW): tags.append("#продажа")
+        if any(k in w for k in BUY_KW): tags.append("#покупка")
+        if any(k in w for k in TRADE_KW): tags.append("#обмен")
         for c in CAT_KW:
-            if c in w: tags.add(f"#{c}")
-    tags.add(f"@{user}")
-    return " ".join(tags) + "\n\n" + text.strip()
+            if c in w: tags.append(f"#{c}")
+    tags.append(f"@{user}")
+    seen = set(); uniq = []
+    for t in tags:
+        if t not in seen:
+            seen.add(t); uniq.append(t)
+    return " ".join(uniq) + "\n\n" + text.strip()
 
 def contact_button(user: str):
     return InlineKeyboardMarkup([
@@ -101,7 +124,7 @@ def format_announcement(text: str, username: str) -> str:
         f"Отправил(а): @{username}"
     )
 
-# ——— Хендлеры ——————————————————————————————————————
+# ——— Хендлеры ———————————————————————————————————————————
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/start from @{update.effective_user.username}")
     with open("onyxshopbot.png", "rb") as img:
@@ -109,7 +132,7 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             photo=img,
             caption=(
                 "Привет! Это бот магазина Onyx Shop.\n"
-                "Чтобы выложить объявление просто отправьте его боту (до 100 символов, не более одной картинки)"
+                "Чтобы выложить объявление, просто отправьте его боту (до 100 символов, не более одной картинки)."
             )
         )
 
@@ -122,7 +145,7 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if has_forbidden(txt):
         return await update.message.reply_text("❌ Отклонено: найдено запрещённое слово.")
     if not has_required(txt):
-        return await update.message.reply_text("❌ Отклонено: нет ключевых слов (например: продам, куплю, обмен).")
+        return await update.message.reply_text("❌ Отклонено: нет ключевых слов (куплю/продажа/обмен).")
 
     await update.message.reply_text("✅ Объявление опубликовано.")
     await ctx.bot.send_message(
