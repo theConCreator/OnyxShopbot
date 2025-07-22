@@ -48,10 +48,13 @@ RENT_KW = ["сдам", "аренда", "арендую", "сниму", "rent"]
 CAT_KW = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
 FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука", "подпишись", "заходи"]
 
+# Таймеры и обработанные группы
 last_post_time = {}
 POST_COOLDOWN = timedelta(hours=2)
 pending = {}
+recent_media_groups = set()
 
+# Вспомогательные функции
 def count_symbols(text: str) -> int:
     return len(text)
 
@@ -112,7 +115,6 @@ async def check_subscription(ctx: ContextTypes.DEFAULT_TYPE, user_id: int) -> bo
 
 # Команды
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.username
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
@@ -168,10 +170,14 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cap = update.message.caption or ""
     photos = update.message.photo or []
     mid = update.message.message_id
+    mgid = update.message.media_group_id
 
-    # Блокировка медиагрупп (несколько фото в одном сообщении)
-    if update.message.media_group_id is not None:
-        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
+    if mgid:
+        if mgid in recent_media_groups:
+            return  # уже обработано
+        recent_media_groups.add(mgid)
+        await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
+        return
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([
@@ -201,7 +207,7 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=moderation_buttons(mid)
         )
 
-    last_post_time[uid] = now
+    last_post_time[uid] = datetime.utcnow()
     await update.message.reply_text("✅ Фото опубликовано.")
     await ctx.bot.send_photo(
         chat_id=TARGET_CHANNEL_ID,
@@ -236,7 +242,7 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("❌ Отклонено модератором.")
         await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"Отклонено @{user}:\n{cap}")
 
-# Запуск
+# Запуск бота
 def run_bot():
     app_bt = ApplicationBuilder().token(TOKEN).build()
     app_bt.add_handler(CommandHandler("start", start_cmd))
