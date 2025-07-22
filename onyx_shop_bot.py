@@ -48,19 +48,18 @@ RENT_KW = ["сдам", "аренда", "арендую", "сниму", "rent"]
 CAT_KW = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
 FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука", "подпишись", "заходи"]
 
-# Таймеры и обработанные группы
+# Таймеры
 last_post_time = {}
 POST_COOLDOWN = timedelta(hours=2)
 pending = {}
 recent_media_groups = set()
 
-# Вспомогательные функции
+# Утилиты
 def count_symbols(text: str) -> int:
     return len(text)
 
 def has_forbidden(text: str) -> bool:
-    lowered = text.lower()
-    return any(f in lowered for f in FORBIDDEN)
+    return any(f in text.lower() for f in FORBIDDEN)
 
 def has_required(text: str) -> bool:
     lowered = text.lower()
@@ -77,12 +76,12 @@ def build_caption(text: str, user: str) -> str:
         for c in CAT_KW:
             if c in word: tags.append(f"#{c}")
     tags.append(f"@{user}")
-    seen = set()
     uniq = []
-    for t in tags:
-        if t not in seen:
-            seen.add(t)
-            uniq.append(t)
+    seen = set()
+    for tag in tags:
+        if tag not in seen:
+            seen.add(tag)
+            uniq.append(tag)
     return " ".join(uniq) + "\n\n" + text.strip()
 
 def contact_button(user: str):
@@ -118,7 +117,7 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
-            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила публикации — /rules)."
+            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила — /rules)."
         )
 
 async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -172,21 +171,22 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     mid = update.message.message_id
     mgid = update.message.media_group_id
 
-    if mgid:
+    # Исключаем одиночные фото, даже если есть media_group_id
+    if mgid and len(photos) > 1:
         if mgid in recent_media_groups:
-            return  # уже обработано
+            return
         recent_media_groups.add(mgid)
         await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
         return
+
+    if len(photos) != 1:
+        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]
         ])
-        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
-
-    if len(photos) != 1:
-        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
+        return await update.message.reply_text("❗ Подпишись на канал для публикации.", reply_markup=btn)
 
     now = datetime.utcnow()
     if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
@@ -207,7 +207,7 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=moderation_buttons(mid)
         )
 
-    last_post_time[uid] = datetime.utcnow()
+    last_post_time[uid] = now
     await update.message.reply_text("✅ Фото опубликовано.")
     await ctx.bot.send_photo(
         chat_id=TARGET_CHANNEL_ID,
@@ -242,7 +242,7 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("❌ Отклонено модератором.")
         await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"Отклонено @{user}:\n{cap}")
 
-# Запуск бота
+# Запуск
 def run_bot():
     app_bt = ApplicationBuilder().token(TOKEN).build()
     app_bt.add_handler(CommandHandler("start", start_cmd))
@@ -251,7 +251,6 @@ def run_bot():
     app_bt.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app_bt.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app_bt.add_handler(CallbackQueryHandler(mod_cb))
-
     logger.info("🚀 Бот запущен")
     app_bt.run_polling()
 
