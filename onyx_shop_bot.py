@@ -37,14 +37,14 @@ RULES_TEXT = (
     "1. Не превышать 100 символов.\n"
     "2. Не использовать более 1 фото.\n"
     "3. Не использовать запрещённые слова (мат, ругательства и т.д.).\n"
-    "4. Объявления можно публиковать не чаще чем раз в 2 часа\n"
-    "5. Объявление должно касаться только покупки, продажи или обмена. "
-    "Реклама и сторонние темы запрещены."
+    "4. Объявления можно публиковать не чаще чем раз в 2 часа.\n"
+    "5. Объявление должно касаться только покупки, продажи, аренды или обмена."
 )
+
 SALE_KW   = ["продажа","продаю","продам","отдам","sell","селл","сейл","солью"]
 BUY_KW    = ["куплю","покупка","buy","возьму","заберу"]
 TRADE_KW  = ["обмен","меняю","trade","swap"]
-RENT_KW   = ["сдам","аренда","аренду"]
+RENT_KW   = ["сдам","аренда","арендую","сниму","rent"]
 CAT_KW    = ["nft","чат","канал","доллары","тон","usdt","звёзды","подарки"]
 FORBIDDEN = ["реклама","спам","ссылка","instagram","наркотики","порн","мошенничество","ебать","хуй","сука","подпишись","заходи"]
 
@@ -70,16 +70,17 @@ def has_forbidden(text: str) -> bool:
 
 def has_required(text: str) -> bool:
     nt = normalize(text.lower())
-    return any(k in nt for k in SALE_KW + BUY_KW + TRADE_KW)
+    return any(k in nt for k in SALE_KW + BUY_KW + TRADE_KW + RENT_KW)
 
 def build_caption(text: str, user: str) -> str:
     tags = []
-    words = text.lower().split()
+    norm_text = normalize(text.lower())
+    words = norm_text.split()
     for w in words:
         if any(k in w for k in SALE_KW):   tags.append("#продажа")
         if any(k in w for k in BUY_KW):    tags.append("#покупка")
         if any(k in w for k in TRADE_KW):  tags.append("#обмен")
-        if any(k in w for k in RENT_KW):  tags.append("#аренда")
+        if any(k in w for k in RENT_KW):   tags.append("#аренда")
         for c in CAT_KW:
             if c in w: tags.append(f"#{c}")
     tags.append(f"@{user}")
@@ -123,7 +124,7 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
-            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила публикации - /rules)."
+            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила публикации — /rules)."
         )
 
 async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -158,7 +159,7 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if has_forbidden(txt):
         return await update.message.reply_text("❌ Обнаружено запрещённое слово.")
     if not has_required(txt):
-        return await update.message.reply_text("❌ Нет ключевых слов (продажа / покупка / обмен).")
+        return await update.message.reply_text("❌ Нет ключевых слов (продажа / покупка / аренда / обмен).")
 
     last_post_time[uid] = now
     await update.message.reply_text("✅ Объявление опубликовано.")
@@ -194,7 +195,6 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Подпись превышает 100 символов.")
     if has_forbidden(cap):
         return await update.message.reply_text("❌ Запрещённое слово в подписи.")
-
     if not has_required(cap):
         pending[mid] = {"type": "photo", "fid": photos[-1].file_id, "cap": cap, "user": user, "uid": uid}
         await update.message.reply_text("🔎 Отправлено на модерацию.")
