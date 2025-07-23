@@ -14,30 +14,29 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# Load environment variables
+# Загрузка переменных окружения
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
 REJECTED_CHAT_ID = int(os.getenv("REJECTED_CHAT_ID"))
 
-# Flask server for uptime check
+# Flask
 app = Flask(__name__)
-
 @app.route("/", methods=["GET", "HEAD"])
 def alive():
     return "Onyx Shop Bot is alive!", 200
 
-# Logging
+# Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Constants
+# Настройки
 RULES_TEXT = (
-    "📜 Правила размещения объявлений:\n\n"
+    "📝 Правила размещения объявлений:\n\n"
     "1. Не превышать 100 символов.\n"
     "2. Не использовать более 1 фото.\n"
-    "3. Не использовать запрещённые слова.\n"
+    "3. Не использовать запрещённые слова (мат, ругательства и т.д.).\n"
     "4. Объявления можно публиковать не чаще чем раз в 2 часа.\n"
     "5. Объявление должно касаться только покупки, продажи, аренды или обмена."
 )
@@ -49,12 +48,13 @@ RENT_KW = ["сдам", "аренда", "арендую", "сниму", "rent"]
 CAT_KW = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
 FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука", "подпишись", "заходи"]
 
-last_post_time = {}
 POST_COOLDOWN = timedelta(hours=2)
+last_post_time = {}
 pending = {}
 
+# Утилиты
 def count_symbols(text: str) -> int:
-    return len(text)
+    return len(text.strip())
 
 def has_forbidden(text: str) -> bool:
     return any(f in text.lower() for f in FORBIDDEN)
@@ -63,19 +63,23 @@ def has_required(text: str) -> bool:
     lowered = text.lower()
     return any(k in lowered for k in SALE_KW + BUY_KW + TRADE_KW + RENT_KW)
 
-def format_announcement(text: str, username: str) -> str:
+def extract_tags(text: str) -> list[str]:
     tags = []
-    lowered = text.lower().split()
-    for word in lowered:
+    words = text.lower().split()
+    for word in words:
         if any(k in word for k in SALE_KW): tags.append("#продажа")
         if any(k in word for k in BUY_KW): tags.append("#покупка")
         if any(k in word for k in TRADE_KW): tags.append("#обмен")
         if any(k in word for k in RENT_KW): tags.append("#аренда")
         for c in CAT_KW:
             if c in word: tags.append(f"#{c}")
-    main_tag = tags[0] if tags else "#объявление"
+    return list(dict.fromkeys(tags))  # remove duplicates
+
+def format_announcement(text: str, username: str) -> str:
+    tags = extract_tags(text)
+    first_tag = tags[0] if tags else "#объявление"
     return (
-        f"Объявление | {main_tag}\n"
+        f"Объявление | {first_tag}\n"
         f"-------------------\n"
         f"{text.strip()}\n\n"
         f"-------------------\n"
@@ -101,11 +105,12 @@ async def check_subscription(ctx: ContextTypes.DEFAULT_TYPE, user_id: int) -> bo
     except:
         return False
 
+# Команды
 async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
-            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила — /rules)."
+            caption="Привет! Это бот магазина Onyx Shop. Чтобы опубликовать объявление — просто отправь его сюда. /rules"
         )
 
 async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -114,10 +119,11 @@ async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cleartime_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == 5465504821:
         last_post_time.clear()
-        await update.message.reply_text("⏱ Все таймеры сброшены.")
+        await update.message.reply_text("✅ Все таймеры сброшены.")
     else:
-        await update.message.reply_text("⛔ Нет доступа к этой команде.")
+        await update.message.reply_text("⛔ Нет доступа.")
 
+# Текст
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user = update.effective_user.username or "аноним"
@@ -125,12 +131,12 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
-        return await update.message.reply_text("❗ Подпишись на канал для публикации.", reply_markup=btn)
+        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
 
     now = datetime.utcnow()
     if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
         wait = POST_COOLDOWN - (now - last_post_time[uid])
-        return await update.message.reply_text(f"⏱ Новое объявление можно через {wait.seconds // 60} мин.")
+        return await update.message.reply_text(f"⏱ Следующее объявление можно через {wait.seconds // 60} мин.")
 
     if count_symbols(txt) > 100:
         return await update.message.reply_text("❌ Превышено 100 символов.")
@@ -147,6 +153,7 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=contact_button(user)
     )
 
+# Фото
 async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user = update.effective_user.username or "аноним"
@@ -156,15 +163,10 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
-        return await update.message.reply_text("❗ Подпишись на канал для публикации.", reply_markup=btn)
+        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
 
     if len(photos) != 1:
         return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
-
-    now = datetime.utcnow()
-    if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
-        wait = POST_COOLDOWN - (now - last_post_time[uid])
-        return await update.message.reply_text(f"⏱ Новое объявление можно через {wait.seconds // 60} мин.")
 
     if count_symbols(cap) > 100:
         return await update.message.reply_text("❌ Подпись превышает 100 символов.")
@@ -180,6 +182,11 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=moderation_buttons(mid)
         )
 
+    now = datetime.utcnow()
+    if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
+        wait = POST_COOLDOWN - (now - last_post_time[uid])
+        return await update.message.reply_text(f"⏱ Следующее объявление можно через {wait.seconds // 60} мин.")
+
     last_post_time[uid] = now
     await update.message.reply_text("✅ Фото опубликовано.")
     await ctx.bot.send_photo(
@@ -189,6 +196,7 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=contact_button(user)
     )
 
+# Модерация
 async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -214,6 +222,7 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("❌ Отклонено модератором.")
         await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"Отклонено @{user}:\n{cap}")
 
+# Запуск
 def run_bot():
     app_bt = ApplicationBuilder().token(TOKEN).build()
     app_bt.add_handler(CommandHandler("start", start_cmd))
