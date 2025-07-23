@@ -51,6 +51,7 @@ FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "нар�
 POST_COOLDOWN = timedelta(hours=2)
 last_post_time = {}
 pending = {}
+banned_users = set()
 
 # Утилиты
 def count_symbols(text: str) -> int:
@@ -123,11 +124,38 @@ async def cleartime_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⛔ Нет доступа.")
 
-# Текст
+async def ban_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != 5465504821:
+        return await update.message.reply_text("⛔ Нет доступа.")
+    if not ctx.args:
+        return await update.message.reply_text("⚠️ Используйте: /ban @username или /ban user_id")
+    target = ctx.args[0].lstrip("@")
+    try:
+        banned_users.add(int(target))
+        await update.message.reply_text(f"✅ Забанен ID: {target}")
+    except ValueError:
+        await update.message.reply_text("❌ Неверный ID")
+
+async def unban_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != 5465504821:
+        return await update.message.reply_text("⛔ Нет доступа.")
+    if not ctx.args:
+        return await update.message.reply_text("⚠️ Используйте: /unban @username или /unban user_id")
+    target = ctx.args[0].lstrip("@")
+    try:
+        banned_users.discard(int(target))
+        await update.message.reply_text(f"✅ Разбанен ID: {target}")
+    except ValueError:
+        await update.message.reply_text("❌ Неверный ID")
+
+# Обработка текста
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user = update.effective_user.username or "аноним"
     txt = update.message.text or ""
+
+    if uid in banned_users:
+        return await update.message.reply_text("⛔ Вы забанены и не можете публиковать объявления.")
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
@@ -147,57 +175,49 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     last_post_time[uid] = now
     await update.message.reply_text("✅ Объявление опубликовано.")
-    await ctx.bot.send_message(
-        chat_id=TARGET_CHANNEL_ID,
-        text=format_announcement(txt, user),
-        reply_markup=contact_button(user)
-    )
+    msg = format_announcement(txt, user)
+    await ctx.bot.send_message(chat_id=TARGET_CHANNEL_ID, text=msg, reply_markup=contact_button(user))
+    await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"📩 @{user} (id: {uid}) опубликовал:\n{txt}")
 
-# Фото
-# Фото
+# Обработка фото
 async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    user = update.effective_user.username or "аноним"
-    cap = update.message.caption or ""
-    photos = update.message.photo or []
-    mid = update.message.message_id
+    uid = update.effective_user.id
+    user = update.effective_user.username or "аноним"
+    cap = update.message.caption or ""
+    photos = update.message.photo or []
+    mid = update.message.message_id
 
-    if not await check_subscription(ctx, uid):
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
-        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
+    if uid in banned_users:
+        return await update.message.reply_text("⛔ Вы забанены и не можете публиковать объявления.")
 
-    if len(photos) != 1:
-        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
+    if not await check_subscription(ctx, uid):
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
+        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
 
-    if count_symbols(cap) > 100:
-        return await update.message.reply_text("❌ Подпись превышает 100 символов.")
-    if has_forbidden(cap):
-        return await update.message.reply_text("❌ Запрещённое слово в подписи.")
+    if not photos:
+        return await update.message.reply_text("❌ Прикрепите хотя бы одно фото.")
 
-    now = datetime.utcnow()
-    if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
-        wait = POST_COOLDOWN - (now - last_post_time[uid])
-        return await update.message.reply_text(f"⏱ Следующее объявление можно через {wait.seconds // 60} мин.")
+    if count_symbols(cap) > 100:
+        return await update.message.reply_text("❌ Подпись превышает 100 символов.")
+    if has_forbidden(cap):
+        return await update.message.reply_text("❌ Запрещённое слово в подписи.")
 
-    if has_required(cap):
-        last_post_time[uid] = now
-        await update.message.reply_text("✅ Фото опубликовано.")
-        return await ctx.bot.send_photo(
-            chat_id=TARGET_CHANNEL_ID,
-            photo=photos[-1].file_id,
-            caption=format_announcement(cap, user),
-            reply_markup=contact_button(user)
-        )
-    else:
-        pending[mid] = {"type": "photo", "fid": photos[-1].file_id, "cap": cap, "user": user, "uid": uid}
-        await update.message.reply_text("🔎 Отправлено на модерацию.")
-        return await ctx.bot.send_photo(
-            chat_id=MODERATION_CHAT_ID,
-            photo=photos[-1].file_id,
-            caption=cap,
-            reply_markup=moderation_buttons(mid)
-        )
+    now = datetime.utcnow()
+    if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
+        wait = POST_COOLDOWN - (now - last_post_time[uid])
+        return await update.message.reply_text(f"⏱ Следующее объявление можно через {wait.seconds // 60} мин.")
 
+    photo_id = photos[0].file_id
+
+    if has_required(cap):
+        last_post_time[uid] = now
+        await update.message.reply_text("✅ Фото опубликовано.")
+        await ctx.bot.send_photo(chat_id=TARGET_CHANNEL_ID, photo=photo_id, caption=format_announcement(cap, user), reply_markup=contact_button(user))
+        await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"📷 @{user} (id: {uid}) опубликовал фото:\n{cap}")
+    else:
+        pending[mid] = {"type": "photo", "fid": photo_id, "cap": cap, "user": user, "uid": uid}
+        await update.message.reply_text("🔎 Отправлено на модерацию.")
+        await ctx.bot.send_photo(chat_id=MODERATION_CHAT_ID, photo=photo_id, caption=cap, reply_markup=moderation_buttons(mid))
 
 # Модерация
 async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -221,9 +241,10 @@ async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=contact_button(user)
         )
         await q.edit_message_text("✅ Одобрено и опубликовано.")
+        await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"✅ @{user} (id: {uid}) опубликовал по модерации:\n{cap}")
     else:
         await q.edit_message_text("❌ Отклонено модератором.")
-        await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"Отклонено @{user}:\n{cap}")
+        await ctx.bot.send_message(chat_id=REJECTED_CHAT_ID, text=f"❌ Отклонено @{user} (id: {uid}):\n{cap}")
 
 # Запуск
 def run_bot():
@@ -231,6 +252,8 @@ def run_bot():
     app_bt.add_handler(CommandHandler("start", start_cmd))
     app_bt.add_handler(CommandHandler("rules", rules_cmd))
     app_bt.add_handler(CommandHandler("cleartime", cleartime_cmd))
+    app_bt.add_handler(CommandHandler("ban", ban_cmd))
+    app_bt.add_handler(CommandHandler("unban", unban_cmd))
     app_bt.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app_bt.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app_bt.add_handler(CallbackQueryHandler(mod_cb))
