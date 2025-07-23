@@ -6,12 +6,8 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-    ContextTypes,
+    ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler,
+    filters, ContextTypes
 )
 
 # Загрузка переменных окружения
@@ -21,9 +17,8 @@ TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
 REJECTED_CHAT_ID = int(os.getenv("REJECTED_CHAT_ID"))
 
-# Flask сервер
+# Flask-приложение
 app = Flask(__name__)
-
 @app.route("/", methods=["GET", "HEAD"])
 def alive():
     return "Onyx Shop Bot is alive!", 200
@@ -50,18 +45,18 @@ RENT_KW = ["сдам", "аренда", "арендую", "сниму", "rent"]
 CAT_KW = ["nft", "чат", "канал", "доллары", "тон", "usdt", "звёзды", "подарки"]
 FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "наркотики", "порн", "мошенничество", "ебать", "хуй", "сука", "подпишись", "заходи"]
 
-# Таймеры
+# Таймеры и модерация
 last_post_time = {}
 POST_COOLDOWN = timedelta(hours=2)
 pending = {}
 processed_albums = set()
 
-# Вспомогательные функции
+# Утилиты
 def count_symbols(text: str) -> int:
     return len(text)
 
 def has_forbidden(text: str) -> bool:
-    return any(f in text.lower() for f in FORBIDDEN)
+    return any(word in text.lower() for word in FORBIDDEN)
 
 def has_required(text: str) -> bool:
     lowered = text.lower()
@@ -69,7 +64,8 @@ def has_required(text: str) -> bool:
 
 def build_caption(text: str, user: str) -> str:
     tags = []
-    for word in text.lower().split():
+    lowered = text.lower().split()
+    for word in lowered:
         if any(k in word for k in SALE_KW): tags.append("#продажа")
         if any(k in word for k in BUY_KW): tags.append("#покупка")
         if any(k in word for k in TRADE_KW): tags.append("#обмен")
@@ -77,9 +73,7 @@ def build_caption(text: str, user: str) -> str:
         for c in CAT_KW:
             if c in word: tags.append(f"#{c}")
     tags.append(f"@{user}")
-    # Удаляем дубликаты
-    seen = set()
-    uniq = [t for t in tags if not (t in seen or seen.add(t))]
+    uniq = list(dict.fromkeys(tags))  # remove duplicates
     return " ".join(uniq) + "\n\n" + text.strip()
 
 def contact_button(user: str):
@@ -115,7 +109,7 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
-            caption="Привет! Чтобы опубликовать объявление, просто отправь его сюда. Правила — /rules."
+            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила публикации — /rules)."
         )
 
 async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -175,15 +169,14 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ])
         return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
 
-    # Проверка на альбом
     if media_group_id:
         if media_group_id in processed_albums:
             return
         processed_albums.add(media_group_id)
         return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
 
-    if not photos or len(photos) != 1:
-        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
+    if not photos or len(photos) < 1:
+        return await update.message.reply_text("❌ Прикрепите одно изображение.")
 
     now = datetime.utcnow()
     if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
@@ -213,7 +206,7 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=contact_button(user)
     )
 
-# Модерация
+# Обработка модерации
 async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -248,13 +241,9 @@ def run_bot():
     app_bt.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app_bt.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app_bt.add_handler(CallbackQueryHandler(mod_cb))
-
     logger.info("🚀 Бот запущен")
     app_bt.run_polling()
 
 if __name__ == "__main__":
-    threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=8080),
-        daemon=True
-    ).start()
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8080), daemon=True).start()
     run_bot()
