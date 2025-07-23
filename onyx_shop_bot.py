@@ -154,47 +154,50 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 # Фото
+# Фото
 async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    user = update.effective_user.username or "аноним"
-    cap = update.message.caption or ""
-    photos = update.message.photo or []
-    mid = update.message.message_id
+    uid = update.effective_user.id
+    user = update.effective_user.username or "аноним"
+    cap = update.message.caption or ""
+    photos = update.message.photo or []
+    mid = update.message.message_id
 
-    if not await check_subscription(ctx, uid):
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
-        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
+    if not await check_subscription(ctx, uid):
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]])
+        return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
 
-    if len(photos) != 1:
-        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
+    if len(photos) != 1:
+        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
 
-    if count_symbols(cap) > 100:
-        return await update.message.reply_text("❌ Подпись превышает 100 символов.")
-    if has_forbidden(cap):
-        return await update.message.reply_text("❌ Запрещённое слово в подписи.")
-    if not has_required(cap):
-        pending[mid] = {"type": "photo", "fid": photos[-1].file_id, "cap": cap, "user": user, "uid": uid}
-        await update.message.reply_text("🔎 Отправлено на модерацию.")
-        return await ctx.bot.send_photo(
-            chat_id=MODERATION_CHAT_ID,
-            photo=photos[-1].file_id,
-            caption=cap,
-            reply_markup=moderation_buttons(mid)
-        )
+    if count_symbols(cap) > 100:
+        return await update.message.reply_text("❌ Подпись превышает 100 символов.")
+    if has_forbidden(cap):
+        return await update.message.reply_text("❌ Запрещённое слово в подписи.")
 
-    now = datetime.utcnow()
-    if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
-        wait = POST_COOLDOWN - (now - last_post_time[uid])
-        return await update.message.reply_text(f"⏱ Следующее объявление можно через {wait.seconds // 60} мин.")
+    now = datetime.utcnow()
+    if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
+        wait = POST_COOLDOWN - (now - last_post_time[uid])
+        return await update.message.reply_text(f"⏱ Следующее объявление можно через {wait.seconds // 60} мин.")
 
-    last_post_time[uid] = now
-    await update.message.reply_text("✅ Фото опубликовано.")
-    await ctx.bot.send_photo(
-        chat_id=TARGET_CHANNEL_ID,
-        photo=photos[-1].file_id,
-        caption=format_announcement(cap, user),
-        reply_markup=contact_button(user)
-    )
+    if has_required(cap):
+        last_post_time[uid] = now
+        await update.message.reply_text("✅ Фото опубликовано.")
+        return await ctx.bot.send_photo(
+            chat_id=TARGET_CHANNEL_ID,
+            photo=photos[-1].file_id,
+            caption=format_announcement(cap, user),
+            reply_markup=contact_button(user)
+        )
+    else:
+        pending[mid] = {"type": "photo", "fid": photos[-1].file_id, "cap": cap, "user": user, "uid": uid}
+        await update.message.reply_text("🔎 Отправлено на модерацию.")
+        return await ctx.bot.send_photo(
+            chat_id=MODERATION_CHAT_ID,
+            photo=photos[-1].file_id,
+            caption=cap,
+            reply_markup=moderation_buttons(mid)
+        )
+
 
 # Модерация
 async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
