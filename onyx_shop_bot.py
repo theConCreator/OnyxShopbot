@@ -14,15 +14,16 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# Загрузка переменных
+# Загрузка переменных окружения
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 MODERATION_CHAT_ID = int(os.getenv("MODERATION_CHAT_ID"))
 REJECTED_CHAT_ID = int(os.getenv("REJECTED_CHAT_ID"))
 
-# Flask для Render
+# Flask сервер
 app = Flask(__name__)
+
 @app.route("/", methods=["GET", "HEAD"])
 def alive():
     return "Onyx Shop Bot is alive!", 200
@@ -31,7 +32,7 @@ def alive():
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Настройки
+# Правила
 RULES_TEXT = (
     "📝 Правила размещения объявлений:\n\n"
     "1. Не превышать 100 символов.\n"
@@ -41,6 +42,7 @@ RULES_TEXT = (
     "5. Объявление должно касаться только покупки, продажи, аренды или обмена."
 )
 
+# Ключевые слова
 SALE_KW = ["продажа", "продаю", "продам", "отдам", "sell", "селл", "сейл", "солью"]
 BUY_KW = ["куплю", "покупка", "buy", "возьму", "заберу"]
 TRADE_KW = ["обмен", "меняю", "trade", "swap"]
@@ -52,14 +54,14 @@ FORBIDDEN = ["реклама", "спам", "ссылка", "instagram", "нар�
 last_post_time = {}
 POST_COOLDOWN = timedelta(hours=2)
 pending = {}
+processed_albums = set()
 
-# Функции
+# Вспомогательные функции
 def count_symbols(text: str) -> int:
     return len(text)
 
 def has_forbidden(text: str) -> bool:
-    lowered = text.lower()
-    return any(f in lowered for f in FORBIDDEN)
+    return any(f in text.lower() for f in FORBIDDEN)
 
 def has_required(text: str) -> bool:
     lowered = text.lower()
@@ -67,8 +69,7 @@ def has_required(text: str) -> bool:
 
 def build_caption(text: str, user: str) -> str:
     tags = []
-    lowered = text.lower().split()
-    for word in lowered:
+    for word in text.lower().split():
         if any(k in word for k in SALE_KW): tags.append("#продажа")
         if any(k in word for k in BUY_KW): tags.append("#покупка")
         if any(k in word for k in TRADE_KW): tags.append("#обмен")
@@ -76,12 +77,9 @@ def build_caption(text: str, user: str) -> str:
         for c in CAT_KW:
             if c in word: tags.append(f"#{c}")
     tags.append(f"@{user}")
+    # Удаляем дубликаты
     seen = set()
-    uniq = []
-    for t in tags:
-        if t not in seen:
-            seen.add(t)
-            uniq.append(t)
+    uniq = [t for t in tags if not (t in seen or seen.add(t))]
     return " ".join(uniq) + "\n\n" + text.strip()
 
 def contact_button(user: str):
@@ -117,7 +115,7 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     with open("onyxshopbot.png", "rb") as img:
         await update.message.reply_photo(
             photo=img,
-            caption="Привет, это бот магазина Onyx Shop (@onyx_sh0p). Чтобы опубликовать объявление, просто отправь его сюда (правила публикации — /rules)."
+            caption="Привет! Чтобы опубликовать объявление, просто отправь его сюда. Правила — /rules."
         )
 
 async def rules_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -145,7 +143,7 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     now = datetime.utcnow()
     if uid in last_post_time and now - last_post_time[uid] < POST_COOLDOWN:
         wait = POST_COOLDOWN - (now - last_post_time[uid])
-        return await update.message.reply_text(f"⏱ Новое объявление можно опубликовать через {wait.seconds // 60} мин.")
+        return await update.message.reply_text(f"⏱ Новое объявление можно через {wait.seconds // 60} мин.")
 
     if count_symbols(txt) > 100:
         return await update.message.reply_text("❌ Превышено 100 символов.")
@@ -169,12 +167,20 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cap = update.message.caption or ""
     photos = update.message.photo or []
     mid = update.message.message_id
+    media_group_id = update.message.media_group_id
 
     if not await check_subscription(ctx, uid):
         btn = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Подписаться", url=f"https://t.me/c/{str(TARGET_CHANNEL_ID)[4:]}")]
         ])
         return await update.message.reply_text("❗ Подпишитесь на канал для публикации.", reply_markup=btn)
+
+    # Проверка на альбом
+    if media_group_id:
+        if media_group_id in processed_albums:
+            return
+        processed_albums.add(media_group_id)
+        return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
 
     if not photos or len(photos) != 1:
         return await update.message.reply_text("❌ Можно прикрепить только одну фотографию.")
@@ -207,7 +213,7 @@ async def photo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=contact_button(user)
     )
 
-# Обработка модерации
+# Модерация
 async def mod_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
